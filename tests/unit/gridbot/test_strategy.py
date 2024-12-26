@@ -73,20 +73,26 @@ class TestGridStrategy:
         grid_size = strategy.calculate_grid_size(Decimal("45000"))
         
         # Grid size should be current_price * (gridsize / 100)
-        expected_size = Decimal("45000") * Decimal("0.01")  # 1% grid size
+        expected_size = (Decimal("45000") * mock_config.gridsize) / Decimal("100")  # 1% grid size
         assert grid_size == expected_size
 
     @pytest.mark.asyncio
-    async def test_initialize_grid(self, mock_config, mock_exchange):
+    @patch('gridbot.strategy.time.time')
+    async def test_initialize_grid(self, mock_time, mock_config, mock_exchange):
         """Test grid initialization."""
+        mock_time.return_value = 1640995200  # This will give us 1640995200000 when multiplied by 1000
+        
         strategy = GridStrategy(mock_config, mock_exchange)
-        await strategy.initialize_grid()
+        await strategy.initialize_grid(fresh_start=True)
 
         # Verify initial market buy
         mock_exchange.create_market_buy_order.assert_called_once()
-        
-        # Verify initial sell order
-        mock_exchange.create_limit_sell_order.assert_called_once()
+
+        # Verify sell orders were created
+        assert mock_exchange.create_limit_sell_order.call_count == mock_config.grids
+        first_call_args = mock_exchange.create_limit_sell_order.call_args_list[0][0]
+        assert isinstance(first_call_args[0], Decimal)  # amount
+        assert isinstance(first_call_args[1], Decimal)  # price
         
         # Verify grid of buy orders
         assert mock_exchange.create_limit_buy_order.call_count == mock_config.grids - 1
@@ -94,7 +100,12 @@ class TestGridStrategy:
         # Verify order tracking
         assert len(strategy.order_pairs) == mock_config.grids
         for pair in strategy.order_pairs:
-            assert pair.buy_order_id is not None
+            if pair.buy_order_id == 'market_buy_1':  # Initial market buy
+                assert pair.sell_order_id is not None
+                assert pair.buy_price == Decimal("45000")
+            else:  # Limit buy orders
+                assert pair.buy_order_id is not None
+                assert pair.buy_price < Decimal("45000")
             assert pair.amount > Decimal("0")
             assert pair.timestamp == 1640995200000
 
@@ -112,9 +123,13 @@ class TestGridStrategy:
 
         # Verify existing orders were cancelled
         assert mock_exchange.cancel_order.call_count == 2
-        
-        # Verify existing position was sold
-        mock_exchange.create_market_sell_order.assert_called_once_with(Decimal("0.1"))
+        mock_exchange.cancel_order.assert_any_call('existing_1')
+        mock_exchange.cancel_order.assert_any_call('existing_2')
+
+        # Verify grid was initialized with new orders
+        assert mock_exchange.create_market_buy_order.call_count == 1
+        assert mock_exchange.create_limit_sell_order.call_count == mock_config.grids
+        assert mock_exchange.create_limit_buy_order.call_count == mock_config.grids - 1
 
     @pytest.mark.asyncio
     async def test_handle_filled_buy_order(self, mock_config, mock_exchange):
@@ -140,18 +155,23 @@ class TestGridStrategy:
         # Verify sell order placement
         mock_exchange.create_limit_sell_order.assert_called_once()
         call_args = mock_exchange.create_limit_sell_order.call_args[0]
-        assert call_args[0] == Decimal("0.1")  # amount
-        assert call_args[1] == Decimal("45450")  # price + grid_size
+        assert call_args[0] == trade.amount  # amount
+        assert call_args[1] == Decimal("45450")  # price = price + grid_size
         
-        # Verify new buy order placement
-        mock_exchange.create_limit_buy_order.assert_called_once()
-        call_args = mock_exchange.create_limit_buy_order.call_args[0]
-        assert call_args[1] == Decimal("44550")  # price - grid_size
+        # Verify order pair tracking
+        assert len(strategy.order_pairs) == 1
+        pair = strategy.order_pairs[0]
+        assert pair.buy_order_id == "buy_1"
+        assert pair.buy_price == Decimal("45000")
+        assert pair.sell_order_id == "limit_sell_1"
+        assert pair.sell_price == Decimal("46000")
+        assert pair.amount == Decimal("0.1")
 
     @pytest.mark.asyncio
     async def test_handle_filled_sell_order(self, mock_config, mock_exchange):
         """Test handling of filled sell orders."""
         strategy = GridStrategy(mock_config, mock_exchange)
+        strategy.grid_size = Decimal("450")  # 1% of 45000
         
         # Add an order pair to track
         pair = OrderPair(
@@ -181,8 +201,18 @@ class TestGridStrategy:
         
         # Verify order pair was moved to completed trades
         assert len(strategy.completed_trades) == 1
-        assert len(strategy.order_pairs) == 0
-        assert strategy.completed_trades[0] == trade
+        assert len(strategy.order_pairs) == 1  # New buy order pair created
+        completed_pair = strategy.completed_trades[0]
+        assert completed_pair.buy_order_id == "buy_1"
+        assert completed_pair.sell_order_id == "sell_1"
+        assert completed_pair.buy_price == Decimal("45000")
+        assert completed_pair.sell_price == Decimal("45450")
+        
+        # Verify new buy order was placed
+        mock_exchange.create_limit_buy_order.assert_called_once()
+        call_args = mock_exchange.create_limit_buy_order.call_args[0]
+        assert call_args[0] == trade.amount  # amount
+        assert call_args[1] == Decimal("45000")  # price = original buy price
 
     @pytest.mark.asyncio
     async def test_check_order_health(self, mock_config, mock_exchange):
@@ -190,21 +220,49 @@ class TestGridStrategy:
         strategy = GridStrategy(mock_config, mock_exchange)
         strategy.grid_size = Decimal("450")  # 1% of 45000
 
-        # Simulate missing orders
-        mock_exchange.fetch_open_orders.return_value = [
-            {
-                'id': 'buy_1',
-                'side': 'buy',
-                'price': Decimal("44000"),
-                'amount': Decimal("0.1")
-            }
-        ]
-        
+        # Add order pairs to track
+        buy_pair = OrderPair(
+            buy_order_id="missing_buy_1",
+            sell_order_id=None,
+            buy_price=Decimal("44000"),
+            sell_price=None,
+            amount=Decimal("0.1"),
+            timestamp=1640995200000
+        )
+        strategy.order_pairs.append(buy_pair)
+
+        sell_pair = OrderPair(
+            buy_order_id=None,
+            sell_order_id="missing_sell_1",
+            buy_price=None,
+            sell_price=Decimal("46000"),
+            amount=Decimal("0.1"),
+            timestamp=1640995200000
+        )
+        strategy.order_pairs.append(sell_pair)
+
+        # Mock fetch_open_orders to return empty list (all orders missing)
+        mock_exchange.fetch_open_orders.return_value = []
+
+        # Run health check
         await strategy.check_order_health()
-        
-        # Should create missing sell order
-        mock_exchange.create_limit_sell_order.assert_called_once()
-        
-        # Should create missing buy orders
-        expected_buy_orders = mock_config.grids - 1  # -1 for existing buy order
-        assert mock_exchange.create_limit_buy_order.call_count == expected_buy_orders
+
+        # Verify missing buy order was recreated
+        mock_exchange.create_limit_buy_order.assert_called_once()
+        buy_args = mock_exchange.create_limit_buy_order.call_args[0]
+        assert buy_args[0] == buy_pair.amount  # amount
+        assert buy_args[1] == Decimal("44000")  # price
+
+        # Verify both sell orders were recreated (one for buy_pair and one for sell_pair)
+        assert mock_exchange.create_limit_sell_order.call_count == 2
+        sell_calls = mock_exchange.create_limit_sell_order.call_args_list
+
+        # Check the sell order for buy_pair (grid level above buy price)
+        buy_pair_sell_args = sell_calls[0][0]
+        assert buy_pair_sell_args[0] == buy_pair.amount  # amount
+        assert buy_pair_sell_args[1] == Decimal("44450")  # price
+
+        # Check the sell order for sell_pair (original sell price)
+        sell_pair_sell_args = sell_calls[1][0]
+        assert sell_pair_sell_args[0] == sell_pair.amount  # amount
+        assert sell_pair_sell_args[1] == Decimal("46000")  # price

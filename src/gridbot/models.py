@@ -37,10 +37,10 @@ class BotConfig(BaseModel):
 
 class OrderPair(BaseModel):
     """Represents a pair of buy and sell orders."""
-    buy_order_id: str
+    buy_order_id: Optional[str] = None
     sell_order_id: Optional[str] = None
-    buy_price: Decimal = Field(gt=0)
-    sell_price: Optional[Decimal] = Field(default=None, gt=0)
+    buy_price: Optional[Decimal] = None
+    sell_price: Optional[Decimal] = None
     amount: Decimal = Field(gt=0)
     timestamp: int = Field(gt=0)
 

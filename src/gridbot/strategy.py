@@ -2,64 +2,253 @@ from decimal import Decimal
 from typing import List, Optional, Dict
 from .models import BotConfig, OrderPair, Trade
 from .exchange import ExchangeInterface
+from .websocket import WebSocketManager
+import asyncio
+import time
 
 
 class GridStrategy:
-    def __init__(self, config: BotConfig, exchange: ExchangeInterface):
+    """Grid trading strategy implementation."""
+    def __init__(self, config: BotConfig, exchange: ExchangeInterface, websocket: Optional[WebSocketManager] = None):
+        """Initialize strategy with configuration."""
         self.config = config
         self.exchange = exchange
-        self.order_pairs: List[OrderPair] = []
-        self.completed_trades: List[Trade] = []
-        self.grid_size: Optional[Decimal] = None
-
+        self.websocket = websocket
+        self.order_pairs = []
+        self.completed_trades = []
+        self.current_timestamp = 0
+        self.grid_size = Decimal("0")
+        
+        # Parse trading pair
+        self.base_currency, self.quote_currency = self.config.pair.split('/')
+        
     def calculate_grid_size(self, current_price: Decimal) -> Decimal:
-        """Calculate the grid size in quote currency."""
-        return current_price * self.config.grid_size_percent
+        """Calculate the size of each grid level."""
+        return (current_price * self.config.gridsize) / Decimal("100")
 
     async def initialize_grid(self, fresh_start: bool = False):
-        """Initialize the grid trading strategy."""
-        if fresh_start:
-            await self._perform_fresh_start()
-        
-        # Calculate grid size based on current price
-        ticker = await self.exchange.fetch_ticker()
-        current_price = Decimal(str(ticker['last']))
-        self.grid_size = self.calculate_grid_size(current_price)
+        """Initialize the grid with orders."""
+        try:
+            if fresh_start:
+                # Cancel existing orders and positions
+                open_orders = await self.exchange.fetch_open_orders()
+                for order in open_orders:
+                    await self.exchange.cancel_order(order['id'])
 
-        # Place initial market buy order
-        amount = self.config.quote_per_trade / current_price
-        market_order = await self.exchange.create_market_buy_order(amount)
-        print(f"Initial market buy: Amount {amount}, Price {market_order['price']}")
+                # Reset order tracking
+                self.order_pairs = []
+                self.completed_trades = []
+                
+                # Get current market price
+                current_price = self.exchange.current_price
+                
+                # Calculate grid prices
+                grid_size = self.calculate_grid_size(current_price)
+                self.grid_size = grid_size
+                
+                # Send initial grid status before any orders are created
+                if self.websocket:
+                    await self.websocket.send_update({
+                        'type': 'grid_status',
+                        'data': {
+                            'total_pairs': 0,
+                            'active_pairs': 0,
+                            'completed_trades': 0
+                        }
+                    })
+                
+                # Initial market buy to establish position
+                amount = self.config.quote_per_trade / current_price
+                initial_buy = await self.exchange.create_market_buy_order(amount)
+                print(f"Initial market buy: Amount {amount}, Price {current_price}")
 
-        # Track the market order
-        self.order_pairs.append(OrderPair(
-            buy_order_id=market_order['id'],
-            buy_price=Decimal(str(market_order['price'])),
-            amount=Decimal(str(market_order['amount'])),
-            timestamp=market_order['timestamp']
-        ))
+                # Create initial order pair
+                initial_pair = OrderPair(
+                    buy_order_id=initial_buy['id'],
+                    buy_price=current_price,
+                    amount=amount,
+                    timestamp=int(time.time() * 1000)
+                )
+                self.order_pairs.append(initial_pair)
 
-        # Place initial sell order
-        sell_price = current_price + self.grid_size
-        await self._place_sell_order(amount, sell_price)
+                # Place initial sell order
+                sell_price = current_price + grid_size
+                sell_order = await self.exchange.create_limit_sell_order(amount, sell_price)
+                initial_pair.sell_order_id = sell_order['id']
+                initial_pair.sell_price = Decimal(str(sell_order['price']))
 
-        # Place grid of buy orders
-        for i in range(1, self.config.grids):
-            buy_price = current_price - (i * self.grid_size)
-            buy_amount = self.config.quote_per_trade / buy_price
-            await self._place_buy_order(buy_amount, buy_price)
+                # Place buy orders below current price
+                for i in range(self.config.grids - 1):
+                    buy_price = current_price - (grid_size * (i + 1))
+                    buy_amount = self.config.quote_per_trade / buy_price
+                    buy_order = await self.exchange.create_limit_buy_order(buy_amount, buy_price)
+                    
+                    # Create order pair for the buy order
+                    pair = OrderPair(
+                        buy_order_id=buy_order['id'],
+                        buy_price=Decimal(str(buy_order['price'])),
+                        amount=buy_amount,
+                        timestamp=int(time.time() * 1000)
+                    )
+                    self.order_pairs.append(pair)
+                    
+                    # Create corresponding sell order
+                    sell_price = buy_price + grid_size
+                    sell_order = await self.exchange.create_limit_sell_order(buy_amount, sell_price)
+                    pair.sell_order_id = sell_order['id']
+                    pair.sell_price = Decimal(str(sell_order['price']))
+
+            # Send initial grid status
+            if self.websocket:
+                await self.websocket.send_update({
+                    'type': 'grid_status',
+                    'data': {
+                        'total_pairs': len(self.order_pairs),
+                        'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
+                        'completed_trades': len(self.completed_trades)
+                    }
+                })
+        except Exception as e:
+            if self.websocket:
+                await self.websocket.send_update({
+                    'type': 'error',
+                    'data': {
+                        'message': str(e),
+                        'timestamp': int(time.time() * 1000)
+                    }
+                })
+            raise
 
     async def _perform_fresh_start(self):
-        """Cancel all orders and sell existing position."""
-        orders = await self.exchange.fetch_open_orders()
-        for order in orders:
+        """Cancel existing orders and sell current position."""
+        # Cancel all existing orders
+        open_orders = await self.exchange.fetch_open_orders()
+        for order in open_orders:
             await self.exchange.cancel_order(order['id'])
 
+        # Sell current position
         balance = await self.exchange.fetch_balance()
-        base_currency = self.config.pair.split('/')[0]
-        position = Decimal(str(balance['free'][base_currency]))
-        if position > Decimal('0'):
-            await self.exchange.create_market_sell_order(position)
+        btc_balance = Decimal(str(balance['free']['BTC']))
+        if btc_balance > 0:
+            await self.exchange.create_market_sell_order(btc_balance)
+
+    async def _create_grid_orders(self, current_price: Decimal):
+        """Create a grid of buy and sell orders."""
+        base_price = current_price
+        quote_per_trade = self.config.quote_per_trade
+
+        # Create sell orders above current price
+        for i in range(1, self.config.grids):
+            sell_price = base_price + (self.grid_size * i)
+            amount = quote_per_trade / sell_price
+            sell_order = await self.exchange.create_limit_sell_order(amount, sell_price)
+            self.order_pairs.append(OrderPair(
+                buy_order_id=None,
+                buy_price=None,
+                sell_order_id=sell_order['id'],
+                sell_price=Decimal(str(sell_order['price'])),
+                amount=Decimal(str(sell_order['amount'])),
+                timestamp=sell_order['timestamp']
+            ))
+
+        # Create buy orders below current price
+        for i in range(1, self.config.grids):
+            buy_price = base_price - (self.grid_size * i)
+            amount = quote_per_trade / buy_price
+            buy_order = await self.exchange.create_limit_buy_order(amount, buy_price)
+            self.order_pairs.append(OrderPair(
+                buy_order_id=buy_order['id'],
+                buy_price=Decimal(str(buy_order['price'])),
+                sell_order_id=None,
+                sell_price=None,
+                amount=Decimal(str(buy_order['amount'])),
+                timestamp=buy_order['timestamp']
+            ))
+
+    async def handle_filled_order(self, trade: Trade):
+        """Handle a filled order and maintain the grid."""
+        try:
+            # Send trade update to websocket first
+            if self.websocket:
+                await self.websocket.send_update({
+                    'type': 'trade',
+                    'data': {
+                        'side': trade.side,
+                        'amount': str(trade.amount),
+                        'price': str(trade.price),
+                        'timestamp': trade.timestamp
+                    }
+                })
+
+            if trade.side == "buy":
+                # Find or create order pair for this buy
+                pair = None
+                for p in self.order_pairs:
+                    if p.buy_order_id == trade.order_id:
+                        pair = p
+                        break
+                
+                if pair is None:
+                    pair = OrderPair(
+                        buy_order_id=trade.order_id,
+                        buy_price=trade.price,
+                        amount=trade.amount,
+                        timestamp=trade.timestamp
+                    )
+                    self.order_pairs.append(pair)
+
+                # Create sell order at next grid level up
+                sell_price = trade.price + self.grid_size
+                sell_order = await self.exchange.create_limit_sell_order(trade.amount, sell_price)
+                
+                # Update pair with sell order details
+                pair.sell_order_id = sell_order['id']
+                pair.sell_price = Decimal(str(sell_order['price']))
+
+            else:  # sell order
+                # Find the completed pair
+                completed_pair = None
+                for pair in self.order_pairs:
+                    if pair.sell_order_id == trade.order_id:
+                        completed_pair = pair
+                        self.order_pairs.remove(pair)
+                        self.completed_trades.append(pair)
+                        break
+
+                if completed_pair:
+                    # Create new buy order at the original buy price
+                    buy_price = completed_pair.buy_price
+                    buy_order = await self.exchange.create_limit_buy_order(completed_pair.amount, buy_price)
+
+                    # Create new pair for the buy order
+                    new_pair = OrderPair(
+                        buy_order_id=buy_order['id'],
+                        buy_price=Decimal(str(buy_order['price'])),
+                        amount=trade.amount,
+                        timestamp=trade.timestamp
+                    )
+                    self.order_pairs.append(new_pair)
+
+            # Send grid status update to websocket
+            if self.websocket:
+                await self.websocket.send_update({
+                    'type': 'grid_status',
+                    'data': {
+                        'total_pairs': len(self.order_pairs),
+                        'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
+                        'completed_trades': len(self.completed_trades)
+                    }
+                })
+        except Exception as e:
+            if self.websocket:
+                await self.websocket.send_update({
+                    'type': 'error',
+                    'data': {
+                        'message': str(e),
+                        'timestamp': int(time.time() * 1000)
+                    }
+                })
+            raise
 
     async def _place_buy_order(self, amount: Decimal, price: Decimal) -> Dict:
         """Place a new buy order and track it."""
@@ -67,70 +256,66 @@ class GridStrategy:
         self.order_pairs.append(OrderPair(
             buy_order_id=order['id'],
             buy_price=Decimal(str(order['price'])),
+            sell_order_id=None,
+            sell_price=None,
             amount=Decimal(str(order['amount'])),
             timestamp=order['timestamp']
         ))
         return order
 
     async def _place_sell_order(self, amount: Decimal, price: Decimal) -> Dict:
-        """Place a new sell order and update order tracking."""
+        """Place a new sell order and track it."""
         order = await self.exchange.create_limit_sell_order(amount, price)
-        # Find the corresponding buy order and update the pair
-        for pair in self.order_pairs:
-            if pair.sell_order_id is None:
-                pair.sell_order_id = order['id']
-                pair.sell_price = Decimal(str(order['price']))
-                break
+        self.order_pairs.append(OrderPair(
+            buy_order_id=None,
+            buy_price=None,
+            sell_order_id=order['id'],
+            sell_price=Decimal(str(order['price'])),
+            amount=Decimal(str(order['amount'])),
+            timestamp=order['timestamp']
+        ))
         return order
 
-    async def handle_filled_order(self, trade: Trade):
-        """Handle a filled order and create corresponding orders."""
-        if trade.side == 'buy':
-            # Place a sell order one grid size above
-            sell_price = trade.price + self.grid_size
-            await self._place_sell_order(trade.amount, sell_price)
-            
-            # Place a new buy order one grid size below
-            buy_price = trade.price - self.grid_size
-            buy_amount = self.config.quote_per_trade / buy_price
-            await self._place_buy_order(buy_amount, buy_price)
-        
-        elif trade.side == 'sell':
-            # Update order pair tracking
-            for pair in self.order_pairs:
-                if pair.sell_order_id == trade.order_id:
-                    self.completed_trades.append(trade)
-                    self.order_pairs.remove(pair)
-                    break
-
     async def check_order_health(self):
-        """Verify grid health and recreate missing orders."""
+        """Check and repair grid orders."""
         open_orders = await self.exchange.fetch_open_orders()
+        open_order_ids = {order['id'] for order in open_orders}
         
-        # Count buy and sell orders
-        buy_orders = [o for o in open_orders if o['side'] == 'buy']
-        sell_orders = [o for o in open_orders if o['side'] == 'sell']
-
-        # Ensure we have at least one sell order
-        if not sell_orders:
-            balance = await self.exchange.fetch_balance()
-            base_currency = self.config.pair.split('/')[0]
-            if Decimal(str(balance['free'][base_currency])) > Decimal('0'):
-                current_price = self.exchange.current_price
-                sell_price = current_price + self.grid_size
-                await self._place_sell_order(
-                    balance['free'][base_currency],
-                    sell_price
-                )
-
-        # Ensure we have enough buy orders
-        missing_buys = self.config.grids - len(buy_orders)
-        if missing_buys > 0:
-            lowest_buy = min(buy_orders, key=lambda x: x['price']) if buy_orders else None
-            base_price = (lowest_buy['price'] if lowest_buy 
-                         else self.exchange.current_price - self.grid_size)
+        for pair in self.order_pairs:
+            # Check buy order
+            if pair.buy_order_id and pair.buy_order_id not in open_order_ids:
+                # Recreate missing buy order
+                buy_order = await self.exchange.create_limit_buy_order(pair.amount, pair.buy_price)
+                pair.buy_order_id = buy_order['id']
+                
+                # Create corresponding sell order if needed
+                if not pair.sell_order_id:
+                    sell_price = pair.buy_price + self.grid_size
+                    sell_order = await self.exchange.create_limit_sell_order(pair.amount, sell_price)
+                    pair.sell_order_id = sell_order['id']
+                    pair.sell_price = Decimal(str(sell_order['price']))
             
-            for i in range(missing_buys):
-                buy_price = Decimal(str(base_price)) - (i * self.grid_size)
-                buy_amount = self.config.quote_per_trade / buy_price
-                await self._place_buy_order(buy_amount, buy_price)
+            # Check sell order (only if it's a sell-only order)
+            elif pair.sell_order_id and pair.sell_order_id not in open_order_ids:
+                # Recreate missing sell order with original price
+                sell_order = await self.exchange.create_limit_sell_order(pair.amount, pair.sell_price)
+                pair.sell_order_id = sell_order['id']
+
+        # Send updated grid status
+        if self.websocket:
+            await self.websocket.send_update({
+                'type': 'grid_status',
+                'data': {
+                    'total_pairs': len(self.order_pairs),
+                    'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
+                    'completed_trades': len(self.completed_trades)
+                }
+            })
+
+    async def update_price(self):
+        """Update current price and notify websocket."""
+        ticker = await self.exchange.fetch_ticker()
+        current_price = Decimal(str(ticker['last']))
+        
+        if self.websocket:
+            await self.websocket.add_price(current_price)

@@ -2,6 +2,8 @@ import pytest
 from decimal import Decimal
 from typing import Dict, Any
 from gridbot.models import BotConfig, FeeCoinConfig
+from gridbot.exchange import ExchangeInterface
+from unittest.mock import AsyncMock
 
 @pytest.fixture
 def mock_config() -> BotConfig:
@@ -27,6 +29,58 @@ def mock_config() -> BotConfig:
         frontend_host="localhost:8080",
         fee_coin=fee_coin_config
     )
+
+@pytest.fixture
+def mock_exchange():
+    """Create a mock exchange interface."""
+    mock = AsyncMock(spec=ExchangeInterface)
+    mock.current_price = Decimal("45000")
+    mock.fetch_ticker = AsyncMock(return_value={'last': Decimal("45000")})
+    
+    # Mock market buy order
+    mock.create_market_buy_order = AsyncMock()
+    mock.create_market_buy_order.return_value = {
+        'id': 'market_buy_1',
+        'price': Decimal("45000"),
+        'amount': Decimal("0.1"),
+        'timestamp': 1640995200000
+    }
+    
+    # Mock limit buy order
+    mock.create_limit_buy_order = AsyncMock()
+    mock.create_limit_buy_order.return_value = {
+        'id': 'limit_buy_1',
+        'price': Decimal("44000"),
+        'amount': Decimal("0.1"),
+        'timestamp': 1640995200000
+    }
+    
+    # Mock limit sell order
+    mock.create_limit_sell_order = AsyncMock()
+    mock.create_limit_sell_order.return_value = {
+        'id': 'limit_sell_1',
+        'price': Decimal("46000"),
+        'amount': Decimal("0.1"),
+        'timestamp': 1640995200000
+    }
+    
+    # Mock market sell order
+    mock.create_market_sell_order = AsyncMock()
+    mock.create_market_sell_order.return_value = {
+        'id': 'market_sell_1',
+        'price': Decimal("45000"),
+        'amount': Decimal("0.1"),
+        'timestamp': 1640995200000
+    }
+    
+    # Mock other methods
+    mock.fetch_open_orders = AsyncMock(return_value=[])
+    mock.fetch_balance = AsyncMock(return_value={
+        'free': {'BTC': Decimal("0.1"), 'USDT': Decimal("5000")}
+    })
+    mock.cancel_order = AsyncMock()
+    
+    return mock
 
 @pytest.fixture
 def mock_market_data() -> Dict[str, Any]:
