@@ -1,9 +1,19 @@
 {
-    "last_session": "2024-12-27T09:17:53+10:00",
+    "last_session": "2024-12-27T09:21:50+10:00",
     "project_state": {
-        "status": "ready_to_merge",
+        "status": "active_development",
         "current_version": "3.0.0",
         "base_directory": "/home/adam/projects/gridbot_v3",
+        "context_file": {
+            "purpose": "Primary source of truth and project guidance",
+            "rules": [
+                "Must be consulted before making any project decisions",
+                "Must be kept up to date with all project changes",
+                "All workflows and rules defined here must be strictly followed",
+                "Changes to workflows must be documented here first"
+            ],
+            "update_frequency": "Every significant change or session"
+        },
         "reference_files": {
             "original_bot": "/home/adam/projects/gridbot/grid2.py",
             "original_readme": "/home/adam/projects/gridbot/README2.md"
@@ -22,7 +32,9 @@
                 "rules": [
                     "All new features and changes must be developed in feature branches",
                     "Branch naming convention: feature/[feature-name] or fix/[bug-name]",
-                    "Changes must be merged to main via pull requests"
+                    "Changes must be merged to main via pull requests",
+                    "Session context must be updated before any commit",
+                    "All commits must follow the defined message format"
                 ],
                 "branching": {
                     "main": "Main development branch",
@@ -42,6 +54,7 @@
                         "fixtures": "Common test data and configurations"
                     },
                     "pre_commit_checks": [
+                        "Update session context file",
                         "Run all tests (pytest -v)",
                         "Verify test coverage",
                         "Check for any failing tests"
@@ -60,12 +73,12 @@
                         ]
                     },
                     "branches": {
-                        "current": "feature/unit-tests",
-                        "status": "ready_to_merge"
+                        "current": "main",
+                        "status": "stable"
                     }
                 }
             },
-            "current_branch": "feature/unit-tests"
+            "current_branch": "main"
         },
         "development_workflow": {
             "session_context": {
@@ -136,23 +149,46 @@
                 "Removed integration tests",
                 "All unit tests passing"
             ]
+        },
+        {
+            "task": "context_update",
+            "description": "Enhanced session context as primary project guide",
+            "date": "2024-12-27",
+            "changes": [
+                "Added explicit rules for context file importance",
+                "Updated workflow to require context updates before commits",
+                "Added context file purpose and update frequency"
+            ]
         }
     ],
     "pending_tasks": [
         {
-            "task": "testing",
-            "description": "Create unit tests for core components",
-            "priority": "high"
+            "task": "risk_management",
+            "description": "Implement risk management features",
+            "subtasks": [
+                "Stop-loss functionality",
+                "Maximum drawdown protection",
+                "Position size limits",
+                "Profit-taking targets"
+            ]
         },
         {
-            "task": "documentation",
-            "description": "Add detailed docstrings and API documentation",
-            "priority": "medium"
+            "task": "market_analysis",
+            "description": "Add market analysis capabilities",
+            "subtasks": [
+                "Trend detection",
+                "Volatility analysis",
+                "Dynamic grid sizing"
+            ]
         },
         {
-            "task": "deployment",
-            "description": "Add deployment instructions and scripts",
-            "priority": "low"
+            "task": "performance_optimization",
+            "description": "Optimize trading performance",
+            "subtasks": [
+                "Dynamic fee optimization",
+                "Slippage protection",
+                "Order book analysis"
+            ]
         }
     ],
     "architectural_decisions": [
