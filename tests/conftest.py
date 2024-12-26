@@ -1,11 +1,18 @@
 import pytest
 from decimal import Decimal
 from typing import Dict, Any
-from gridbot.models import BotConfig
+from gridbot.models import BotConfig, FeeCoinConfig
 
 @pytest.fixture
 def mock_config() -> BotConfig:
     """Provides a basic bot configuration for testing."""
+    fee_coin_config = FeeCoinConfig(
+        manage_fee_coin=True,
+        fee_coin="BNB",
+        fee_coin_repurchase_balance_USDT=Decimal("10"),
+        fee_coin_repurchase_amount_USDT=Decimal("20")
+    )
+    
     return BotConfig(
         name="TestBot",
         exchange="binance",
@@ -18,10 +25,7 @@ def mock_config() -> BotConfig:
         sandbox_mode=True,
         frontend=False,
         frontend_host="localhost:8080",
-        manage_fee_coin=True,
-        fee_coin="BNB",
-        fee_coin_repurchase_balance_USDT=Decimal("10"),
-        fee_coin_repurchase_amount_USDT=Decimal("20")
+        fee_coin=fee_coin_config
     )
 
 @pytest.fixture
