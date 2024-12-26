@@ -1,13 +1,13 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, validator
+from typing import Optional, Literal
 from decimal import Decimal
 
 
 class FeeCoinConfig(BaseModel):
     enabled: bool = Field(alias="manage_fee_coin")
     coin: str = Field(alias="fee_coin")
-    repurchase_balance: Decimal = Field(alias="fee_coin_repurchase_balance_USDT")
-    repurchase_amount: Decimal = Field(alias="fee_coin_repurchase_amount_USDT")
+    repurchase_balance: Decimal = Field(alias="fee_coin_repurchase_balance_USDT", gt=0)
+    repurchase_amount: Decimal = Field(alias="fee_coin_repurchase_amount_USDT", gt=0)
 
 
 class BotConfig(BaseModel):
@@ -16,9 +16,9 @@ class BotConfig(BaseModel):
     api_key: str
     api_secret: str
     pair: str
-    investment: Decimal
-    grids: int
-    gridsize: Decimal
+    investment: Decimal = Field(gt=0)
+    grids: int = Field(gt=0)
+    gridsize: Decimal = Field(gt=0)
     sandbox_mode: bool
     frontend: bool
     frontend_host: str
@@ -39,18 +39,20 @@ class OrderPair(BaseModel):
     """Represents a pair of buy and sell orders."""
     buy_order_id: str
     sell_order_id: Optional[str] = None
-    buy_price: Decimal
-    sell_price: Optional[Decimal] = None
-    amount: Decimal
-    timestamp: int
+    buy_price: Decimal = Field(gt=0)
+    sell_price: Optional[Decimal] = Field(default=None, gt=0)
+    amount: Decimal = Field(gt=0)
+    timestamp: int = Field(gt=0)
 
 
 class Trade(BaseModel):
     """Represents a completed trade."""
     order_id: str
-    side: str
-    price: Decimal
-    amount: Decimal
-    cost: Decimal
-    timestamp: int
-    fee: Optional[dict] = None
+    side: Literal["buy", "sell"]
+    symbol: str
+    amount: Decimal = Field(gt=0)
+    price: Decimal = Field(gt=0)
+    cost: Decimal = Field(gt=0)
+    fee_cost: Decimal = Field(ge=0)
+    fee_currency: str
+    timestamp: int = Field(gt=0)
