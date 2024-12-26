@@ -1,5 +1,5 @@
 {
-    "last_session": "2024-12-27T08:15:26+10:00",
+    "last_session": "2024-12-27T08:21:53+10:00",
     "project_state": {
         "status": "github_initialized",
         "current_version": "3.0.0",
@@ -16,6 +16,24 @@
             "remote": {
                 "name": "origin",
                 "url": "https://github.com/CaffeinatedTech/Girdbot_v3.git"
+            },
+            "workflow": {
+                "branch_strategy": "feature_branches",
+                "rules": [
+                    "All new features and changes must be developed in feature branches",
+                    "Branch naming convention: feature/[feature-name] or fix/[bug-name]",
+                    "Changes must be merged to main via pull requests"
+                ]
+            }
+        },
+        "development_workflow": {
+            "session_context": {
+                "update_timing": "before_git_operations",
+                "rules": [
+                    "Always update session_context.json BEFORE making git commits",
+                    "Include session_context.json in the same commit as related changes",
+                    "Never update session_context.json after pushing to remote"
+                ]
             }
         }
     },
