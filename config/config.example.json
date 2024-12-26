@@ -1,0 +1,17 @@
+{
+    "name": "MyGridBot",
+    "exchange": "binance",
+    "api_key": "your-api-key",
+    "api_secret": "your-api-secret",
+    "pair": "BTC/USDT",
+    "investment": 1000,
+    "grids": 10,
+    "gridsize": 1.0,
+    "sandbox_mode": true,
+    "frontend": true,
+    "frontend_host": "localhost:8080",
+    "manage_fee_coin": true,
+    "fee_coin": "BNB",
+    "fee_coin_repurchase_balance_USDT": 10,
+    "fee_coin_repurchase_amount_USDT": 20
+}

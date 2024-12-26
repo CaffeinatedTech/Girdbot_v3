@@ -1,0 +1,4 @@
+ccxt>=4.1.13
+websockets>=12.0
+python-dotenv>=1.0.0
+pydantic>=2.5.2
