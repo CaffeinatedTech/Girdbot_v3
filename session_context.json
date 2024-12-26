@@ -23,7 +23,47 @@
                     "All new features and changes must be developed in feature branches",
                     "Branch naming convention: feature/[feature-name] or fix/[bug-name]",
                     "Changes must be merged to main via pull requests"
-                ]
+                ],
+                "branching": {
+                    "main": "Main development branch",
+                    "feature_branches": "Create feature branches for new features or significant changes",
+                    "naming": "feature/{feature-name} for feature branches"
+                },
+                "testing": {
+                    "approach": "Test-Driven Development (TDD)",
+                    "workflow": [
+                        "1. Write failing test for new feature/change",
+                        "2. Implement minimal code to make test pass",
+                        "3. Refactor code while keeping tests green",
+                        "4. Repeat for next feature/change"
+                    ],
+                    "categories": {
+                        "unit": "Test individual components in isolation",
+                        "integration": "Test interaction between components",
+                        "fixtures": "Common test data and configurations"
+                    },
+                    "pre_commit_checks": [
+                        "Run all tests (pytest -v)",
+                        "Verify test coverage",
+                        "Check for any failing tests"
+                    ]
+                },
+                "git": {
+                    "pre_commit": [
+                        "Run tests: pytest -v",
+                        "Update session context if needed",
+                        "Stage changes: git add .",
+                        "Create descriptive commit message"
+                    ],
+                    "commit_message_format": {
+                        "title": "Brief description of changes",
+                        "body": [
+                            "- Detailed list of changes",
+                            "- Test coverage added/modified",
+                            "- Any breaking changes"
+                        ]
+                    }
+                }
             },
             "current_branch": "feature/unit-tests"
         },
@@ -51,7 +91,53 @@
                     "Grid calculation and management tests",
                     "Order placement and management tests",
                     "Error handling and recovery tests"
-                ]
+                ],
+                "unit_tests": {
+                    "location": "tests/unit/",
+                    "naming": "test_{module}.py",
+                    "coverage": {
+                        "models": "Data models and validation",
+                        "exchange": "Exchange interface and API calls",
+                        "strategy": "Grid trading logic",
+                        "websocket": "Frontend communication"
+                    }
+                },
+                "integration_tests": {
+                    "location": "tests/integration/",
+                    "focus": [
+                        "Exchange-Strategy interaction",
+                        "Strategy-Websocket communication",
+                        "Full trading cycle simulation"
+                    ]
+                },
+                "fixtures": {
+                    "location": "tests/fixtures/",
+                    "common_data": [
+                        "Mock configurations",
+                        "Sample market data",
+                        "Test trading pairs"
+                    ]
+                },
+                "guidelines": {
+                    "test_structure": [
+                        "Group related tests in classes",
+                        "Use descriptive test names",
+                        "Follow Arrange-Act-Assert pattern",
+                        "Mock external dependencies"
+                    ],
+                    "assertions": [
+                        "Be specific about what is being tested",
+                        "Test both success and failure cases",
+                        "Verify side effects and state changes",
+                        "Check edge cases and boundaries"
+                    ],
+                    "mocking": [
+                        "Mock external services (exchanges, websockets)",
+                        "Use fixtures for common test data",
+                        "Properly handle async operations",
+                        "Simulate various response scenarios"
+                    ]
+                }
             }
         }
     },
