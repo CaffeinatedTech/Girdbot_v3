@@ -31,6 +31,14 @@ class GridStrategy:
         market_order = await self.exchange.create_market_buy_order(amount)
         print(f"Initial market buy: Amount {amount}, Price {market_order['price']}")
 
+        # Track the market order
+        self.order_pairs.append(OrderPair(
+            buy_order_id=market_order['id'],
+            buy_price=Decimal(str(market_order['price'])),
+            amount=Decimal(str(market_order['amount'])),
+            timestamp=market_order['timestamp']
+        ))
+
         # Place initial sell order
         sell_price = current_price + self.grid_size
         await self._place_sell_order(amount, sell_price)
@@ -49,10 +57,9 @@ class GridStrategy:
 
         balance = await self.exchange.fetch_balance()
         base_currency = self.config.pair.split('/')[0]
-        if Decimal(str(balance['free'][base_currency])) > Decimal('0'):
-            await self.exchange.create_market_sell_order(
-                balance['free'][base_currency]
-            )
+        position = Decimal(str(balance['free'][base_currency]))
+        if position > Decimal('0'):
+            await self.exchange.create_market_sell_order(position)
 
     async def _place_buy_order(self, amount: Decimal, price: Decimal) -> Dict:
         """Place a new buy order and track it."""
