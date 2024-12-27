@@ -71,11 +71,8 @@ class GridStrategy:
                 )
                 self.order_pairs.append(initial_pair)
 
-                # Place initial sell order
-                sell_price = current_price + grid_size
-                sell_order = await self.exchange.create_limit_sell_order(amount, sell_price)
-                initial_pair.sell_order_id = sell_order['id']
-                initial_pair.sell_price = Decimal(str(sell_order['price']))
+                # Track buy order status
+                initial_pair.is_filled = False
 
                 # Place buy orders below current price
                 for i in range(self.config.grids - 1):
@@ -91,12 +88,9 @@ class GridStrategy:
                         timestamp=int(time.time() * 1000)
                     )
                     self.order_pairs.append(pair)
-                    
-                    # Create corresponding sell order
-                    sell_price = buy_price + grid_size
-                    sell_order = await self.exchange.create_limit_sell_order(buy_amount, sell_price)
-                    pair.sell_order_id = sell_order['id']
-                    pair.sell_price = Decimal(str(sell_order['price']))
+
+                    # Track buy order status
+                    pair.is_filled = False
 
             # Send initial grid status
             if self.websocket:
@@ -180,15 +174,20 @@ class GridStrategy:
                     }
                 })
 
+            # Log trade details with trade type
+            print(f"Handling filled order: {trade.side} {trade.amount} @ {trade.price}, Type: {trade.type}")
+
             if trade.side == "buy":
+                print("Processing buy order...")
                 # Find or create order pair for this buy
                 pair = None
                 for p in self.order_pairs:
                     if p.buy_order_id == trade.order_id:
                         pair = p
                         break
-                
+            
                 if pair is None:
+                    print("No existing pair found. Creating new pair.")
                     pair = OrderPair(
                         buy_order_id=trade.order_id,
                         buy_price=trade.price,
@@ -199,13 +198,15 @@ class GridStrategy:
 
                 # Create sell order at next grid level up
                 sell_price = trade.price + self.grid_size
+                print(f"Creating sell order at {sell_price}")
                 sell_order = await self.exchange.create_limit_sell_order(trade.amount, sell_price)
-                
+            
                 # Update pair with sell order details
                 pair.sell_order_id = sell_order['id']
                 pair.sell_price = Decimal(str(sell_order['price']))
 
             else:  # sell order
+                print("Processing sell order...")
                 # Find the completed pair
                 completed_pair = None
                 for pair in self.order_pairs:
@@ -216,6 +217,7 @@ class GridStrategy:
                         break
 
                 if completed_pair:
+                    print(f"Completed pair found. Creating new buy order at {completed_pair.buy_price}")
                     # Create new buy order at the original buy price
                     buy_price = completed_pair.buy_price
                     buy_order = await self.exchange.create_limit_buy_order(completed_pair.amount, buy_price)
@@ -228,6 +230,9 @@ class GridStrategy:
                         timestamp=trade.timestamp
                     )
                     self.order_pairs.append(new_pair)
+
+            # Log grid status
+            print(f"Grid Status - Total Pairs: {len(self.order_pairs)}, Active Pairs: {len([p for p in self.order_pairs if p.sell_order_id is not None])}, Completed Trades: {len(self.completed_trades)}")
 
             # Send grid status update to websocket
             if self.websocket:
