@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so
@@ -33,6 +34,7 @@ ENV/
 
 # Config files
 config/config.json
+config/sandbox*.json
 *.env
 
 # Logs

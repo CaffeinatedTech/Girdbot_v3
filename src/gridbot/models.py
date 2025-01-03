@@ -41,6 +41,7 @@ class OrderPair(BaseModel):
     sell_order_id: Optional[str] = None
     buy_price: Optional[Decimal] = None
     sell_price: Optional[Decimal] = None
+    buy_type: Optional[Literal["limit", "market"]] = None
     amount: Decimal = Field(gt=0)
     timestamp: int = Field(gt=0)
 
@@ -53,6 +54,4 @@ class Trade(BaseModel):
     amount: Decimal = Field(gt=0)
     price: Decimal = Field(gt=0)
     cost: Decimal = Field(gt=0)
-    fee_cost: Decimal = Field(ge=0)
-    fee_currency: str
     timestamp: int = Field(gt=0)

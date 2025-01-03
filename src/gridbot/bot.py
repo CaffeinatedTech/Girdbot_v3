@@ -1,8 +1,8 @@
 import asyncio
 import json
 import signal
-from pathlib import Path
-from typing import Optional, Dict, Any
+# from pathlib import Path
+from typing import Optional
 from decimal import Decimal
 from datetime import datetime, timedelta
 
@@ -19,7 +19,10 @@ class GridBot:
         self.exchange = ExchangeInterface(self.config)
         self.strategy = GridStrategy(self.config, self.exchange)
         self.ws_manager = WebSocketManager(self.config)
+        self.current_price = Decimal("0")
+        self.last_price = Decimal("0")
         self.running = True
+        self.tasks = []
         self._setup_signal_handlers()
 
     @staticmethod
@@ -34,7 +37,8 @@ class GridBot:
         def handle_signal(signum, frame):
             print("\nReceived shutdown signal. Cleaning up...")
             self.running = False
-        
+            self._cancel_tasks()
+
         signal.signal(signal.SIGINT, handle_signal)
         signal.signal(signal.SIGTERM, handle_signal)
 
@@ -42,11 +46,13 @@ class GridBot:
         """Initialize bot components."""
         # Initialize exchange
         await self.exchange.initialize()
-        
+        self.exchange.balance = await self.exchange.fetch_balance()
+        print(f"Balance: {self.exchange.balance['USDT']} USDT")
+
         # Initialize WebSocket connection
         if self.config.frontend:
             await self.ws_manager.connect()
-        
+
         # Initialize grid strategy
         await self.strategy.initialize_grid(self.fresh_start)
 
@@ -61,21 +67,21 @@ class GridBot:
                 ticker = await self.exchange.fetch_ticker(
                     f"{self.config.fee_coin.coin}/USDT"
                 )
-                
+
                 fee_coin_balance = Decimal(str(balance['free'][self.config.fee_coin.coin]))
                 fee_coin_price = Decimal(str(ticker['last']))
                 fee_coin_value = fee_coin_balance * fee_coin_price
 
                 if fee_coin_value < self.config.fee_coin.repurchase_balance:
-                    amount = (self.config.fee_coin.repurchase_amount / 
-                            fee_coin_price)
-                    
+                    amount = (self.config.fee_coin.repurchase_amount /
+                              fee_coin_price)
+
                     await self.exchange.create_market_buy_order(amount)
                     print(f"Topped up {self.config.fee_coin.coin}")
-                    
+
             except Exception as e:
                 print(f"Fee coin management error: {e}")
-            
+
             # Random delay to avoid multiple bots buying simultaneously
             await asyncio.sleep(60 + (hash(self.config.name) % 180))
 
@@ -83,12 +89,25 @@ class GridBot:
         """Monitor and handle trades."""
         while self.running:
             try:
-                trade = await self.exchange.watch_trades()
-                if trade:
-                    await self.strategy.handle_filled_order(trade)
-                    self._update_stats(trade)
+                order = await self.exchange.watch_orders()
+                if order:
+                    await self.strategy.handle_filled_order(order)
+                    self._update_stats(order)
             except Exception as e:
                 print(f"Trade watching error: {e}")
+
+    async def _watch_ticker(self):
+        """Monitor and handle ticker updates."""
+        while self.running:
+            try:
+                ticker = await self.exchange.watch_ticker()
+                self.current_price = Decimal(str(ticker['last']))
+                self._update_stats()
+                if self.current_price != self.last_price:
+                    print(f"Current price: {self.current_price}")
+                    self.last_price = self.current_price
+            except Exception as e:
+                print(f"Ticker watching error: {e}")
 
     async def _monitor_health(self):
         """Periodic health check of orders."""
@@ -134,7 +153,7 @@ class GridBot:
         """Calculate profit for a specific time period."""
         period_start = datetime.now() - timedelta(hours=hours)
         period_profit = Decimal('0')
-        
+
         for trade in self.strategy.completed_trades:
             if trade.timestamp >= period_start.timestamp() * 1000:
                 if trade.side == 'sell':
@@ -143,36 +162,44 @@ class GridBot:
                             profit = (trade.price - pair.buy_price) * trade.amount
                             period_profit += profit
                             break
-        
+
         return float(period_profit)
 
     async def run(self):
         """Main bot execution loop."""
         try:
             await self.initialize()
-            
-            tasks = [
+
+            self.tasks = [
+                asyncio.create_task(self._watch_ticker()),
                 asyncio.create_task(self._watch_trades()),
                 asyncio.create_task(self._monitor_health()),
             ]
 
             if self.config.fee_coin and self.config.fee_coin.enabled:
-                tasks.append(asyncio.create_task(self._handle_fee_coin()))
+                self.tasks.append(asyncio.create_task(self._handle_fee_coin()))
 
             if self.config.frontend:
-                tasks.extend([
+                self.tasks.extend([
                     asyncio.create_task(self.ws_manager.keep_alive()),
                     asyncio.create_task(self.ws_manager.process_messages()),
                 ])
 
-            # Wait for all tasks to complete
-            await asyncio.gather(*tasks)
-
+            try:
+                # Wait for all tasks to complete or be cancelled
+                await asyncio.gather(*self.tasks)
+            except asyncio.CancelledError:
+                print("Tasks were cancelled.")
         except Exception as e:
             print(f"Bot execution error: {e}")
         finally:
             self.running = False
             await self._cleanup()
+
+    def _cancel_tasks(self):
+        """Cancel all running tasks."""
+        for task in self.tasks:
+            task.cancel()
 
     async def _cleanup(self):
         """Cleanup resources on shutdown."""
@@ -184,15 +211,15 @@ class GridBot:
 def main():
     """Entry point for the bot."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Grid Trading Bot")
     parser.add_argument('--config', type=str, required=True,
-                       help='Path to configuration file')
+                        help='Path to configuration file')
     parser.add_argument('--fresh', action='store_true',
-                       help='Start fresh by closing current position')
-    
+                        help='Start fresh by closing current position')
+
     args = parser.parse_args()
-    
+
     bot = GridBot(args.config, args.fresh)
     asyncio.run(bot.run())
 

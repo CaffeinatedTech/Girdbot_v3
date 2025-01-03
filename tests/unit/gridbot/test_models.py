@@ -3,6 +3,7 @@ from decimal import Decimal
 from pydantic import ValidationError
 from gridbot.models import BotConfig, FeeCoinConfig, OrderPair, Trade
 
+
 @pytest.mark.unit
 class TestFeeCoinConfig:
     def test_valid_fee_coin_config(self):
@@ -168,8 +169,6 @@ class TestTrade:
             amount=Decimal("0.1"),
             price=Decimal("45000"),
             cost=Decimal("4500"),
-            fee_cost=Decimal("4.5"),
-            fee_currency="USDT",
             timestamp=1640995200000
         )
         assert trade.order_id == "123"
@@ -178,8 +177,6 @@ class TestTrade:
         assert trade.amount == Decimal("0.1")
         assert trade.price == Decimal("45000")
         assert trade.cost == Decimal("4500")
-        assert trade.fee_cost == Decimal("4.5")
-        assert trade.fee_currency == "USDT"
         assert trade.timestamp == 1640995200000
 
     def test_invalid_trade_side(self):
@@ -192,8 +189,6 @@ class TestTrade:
                 amount=Decimal("0.1"),
                 price=Decimal("45000"),
                 cost=Decimal("4500"),
-                fee_cost=Decimal("4.5"),
-                fee_currency="USDT",
                 timestamp=1640995200000
             )
         assert "side" in str(exc_info.value)

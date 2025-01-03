@@ -5,6 +5,7 @@ from gridbot.models import BotConfig, FeeCoinConfig
 from gridbot.exchange import ExchangeInterface
 from unittest.mock import AsyncMock
 
+
 @pytest.fixture
 def mock_config() -> BotConfig:
     """Provides a basic bot configuration for testing."""
@@ -14,7 +15,7 @@ def mock_config() -> BotConfig:
         fee_coin_repurchase_balance_USDT=Decimal("10"),
         fee_coin_repurchase_amount_USDT=Decimal("20")
     )
-    
+
     return BotConfig(
         name="TestBot",
         exchange="binance",
@@ -30,13 +31,14 @@ def mock_config() -> BotConfig:
         fee_coin=fee_coin_config
     )
 
+
 @pytest.fixture
 def mock_exchange():
     """Create a mock exchange interface."""
     mock = AsyncMock(spec=ExchangeInterface)
     mock.current_price = Decimal("45000")
     mock.fetch_ticker = AsyncMock(return_value={'last': Decimal("45000")})
-    
+
     # Mock market buy order
     mock.create_market_buy_order = AsyncMock()
     mock.create_market_buy_order.return_value = {
@@ -45,7 +47,7 @@ def mock_exchange():
         'amount': Decimal("0.1"),
         'timestamp': 1640995200000
     }
-    
+
     # Mock limit buy order
     mock.create_limit_buy_order = AsyncMock()
     mock.create_limit_buy_order.return_value = {
@@ -54,7 +56,7 @@ def mock_exchange():
         'amount': Decimal("0.1"),
         'timestamp': 1640995200000
     }
-    
+
     # Mock limit sell order
     mock.create_limit_sell_order = AsyncMock()
     mock.create_limit_sell_order.return_value = {
@@ -63,7 +65,7 @@ def mock_exchange():
         'amount': Decimal("0.1"),
         'timestamp': 1640995200000
     }
-    
+
     # Mock market sell order
     mock.create_market_sell_order = AsyncMock()
     mock.create_market_sell_order.return_value = {
@@ -72,15 +74,16 @@ def mock_exchange():
         'amount': Decimal("0.1"),
         'timestamp': 1640995200000
     }
-    
+
     # Mock other methods
     mock.fetch_open_orders = AsyncMock(return_value=[])
     mock.fetch_balance = AsyncMock(return_value={
         'free': {'BTC': Decimal("0.1"), 'USDT': Decimal("5000")}
     })
     mock.cancel_order = AsyncMock()
-    
+
     return mock
+
 
 @pytest.fixture
 def mock_market_data() -> Dict[str, Any]:
@@ -106,6 +109,7 @@ def mock_market_data() -> Dict[str, Any]:
         "baseVolume": 100.0,
         "quoteVolume": 4605000.0,
     }
+
 
 @pytest.fixture
 def mock_order() -> Dict[str, Any]:
