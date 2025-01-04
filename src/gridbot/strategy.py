@@ -1,9 +1,9 @@
 from decimal import Decimal
-from typing import List, Optional, Dict
+from typing import Optional, Dict
 from .models import BotConfig, OrderPair, Trade
 from .exchange import ExchangeInterface
 from .websocket import WebSocketManager
-import asyncio
+# import asyncio
 import time
 
 

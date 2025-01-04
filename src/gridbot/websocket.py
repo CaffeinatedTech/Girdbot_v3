@@ -19,7 +19,7 @@ class WebSocketManager:
         """Establish WebSocket connection."""
         if not self.config.frontend:
             return
-        
+
         try:
             self.ws = await websockets.connect(f"wss://{self.config.frontend_host}")
             self.connected = True

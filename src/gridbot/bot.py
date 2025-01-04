@@ -73,8 +73,7 @@ class GridBot:
                 fee_coin_value = fee_coin_balance * fee_coin_price
 
                 if fee_coin_value < self.config.fee_coin.repurchase_balance:
-                    amount = (self.config.fee_coin.repurchase_amount /
-                              fee_coin_price)
+                    amount = (self.config.fee_coin.repurchase_amount / fee_coin_price)
 
                     await self.exchange.create_market_buy_order(amount)
                     print(f"Topped up {self.config.fee_coin.coin}")
