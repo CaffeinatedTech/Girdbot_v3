@@ -1,7 +1,8 @@
 import pytest
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from gridbot.exchange import ExchangeInterface
+
 
 @pytest.mark.unit
 @pytest.mark.exchange
@@ -19,9 +20,9 @@ class TestExchangeInterface:
         """Test fetching ticker data."""
         exchange = ExchangeInterface(mock_config)
         exchange.exchange.fetch_ticker = AsyncMock(return_value=mock_market_data)
-        
+
         ticker = await exchange.fetch_ticker()
-        
+
         assert ticker == mock_market_data
         assert exchange.current_price == Decimal(str(mock_market_data['last']))
         exchange.exchange.fetch_ticker.assert_called_once_with(mock_config.pair)
@@ -31,12 +32,12 @@ class TestExchangeInterface:
         """Test creating a limit buy order."""
         exchange = ExchangeInterface(mock_config)
         exchange.exchange.create_limit_buy_order = AsyncMock(return_value=mock_order)
-        
+
         amount = Decimal("0.1")
         price = Decimal("46000.0")
-        
+
         order = await exchange.create_limit_buy_order(amount, price)
-        
+
         assert order == mock_order
         exchange.exchange.create_limit_buy_order.assert_called_once_with(
             mock_config.pair,
@@ -50,12 +51,12 @@ class TestExchangeInterface:
         exchange = ExchangeInterface(mock_config)
         mock_order['side'] = 'sell'
         exchange.exchange.create_limit_sell_order = AsyncMock(return_value=mock_order)
-        
+
         amount = Decimal("0.1")
         price = Decimal("46000.0")
-        
+
         order = await exchange.create_limit_sell_order(amount, price)
-        
+
         assert order == mock_order
         assert order['side'] == 'sell'
         exchange.exchange.create_limit_sell_order.assert_called_once_with(

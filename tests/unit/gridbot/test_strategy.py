@@ -1,6 +1,6 @@
 import pytest
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from gridbot.strategy import GridStrategy
 from gridbot.models import Trade, OrderPair
 
@@ -225,7 +225,6 @@ class TestGridStrategy:
             buy_order_id="missing_buy_1",
             sell_order_id="missing_Sell_1",
             buy_type="limit",
-            sell_type="limit",
             buy_price=Decimal("44000"),
             sell_price=Decimal("45450"),
             amount=Decimal("0.1"),
@@ -237,7 +236,6 @@ class TestGridStrategy:
             buy_order_id="missing_buy_2",
             sell_order_id="missing_sell_2",
             buy_type="limit",
-            sell_type="limit",
             buy_price=Decimal("45000"),
             sell_price=Decimal("46000"),
             amount=Decimal("0.1"),

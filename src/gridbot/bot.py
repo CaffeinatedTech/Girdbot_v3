@@ -30,6 +30,7 @@ class GridBot:
         """Load and validate configuration from JSON file."""
         with open(config_path, 'r') as f:
             config_data = json.load(f)
+            config_data.coin = config_data['pair'].split('/')[0]
         return BotConfig(**config_data)
 
     def _setup_signal_handlers(self):

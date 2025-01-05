@@ -36,6 +36,7 @@ ENV/
 config/config.json
 config/sandbox*.json
 *.env
+order_pairs_*.json
 
 # Logs
 *.log

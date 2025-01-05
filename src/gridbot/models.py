@@ -16,6 +16,7 @@ class BotConfig(BaseModel):
     api_key: str
     api_secret: str
     pair: str
+    coin: str
     investment: Decimal = Field(gt=0)
     grids: int = Field(gt=0)
     gridsize: Decimal = Field(gt=0)
@@ -44,6 +45,29 @@ class OrderPair(BaseModel):
     buy_type: Optional[Literal["limit", "market"]] = None
     amount: Decimal = Field(gt=0)
     timestamp: int = Field(gt=0)
+
+    def to_dict(self):
+        return {
+            "buy_order_id": self.buy_order_id,
+            "sell_order_id": self.sell_order_id,
+            "buy_price": str(self.buy_price) if self.buy_price else None,
+            "sell_price": str(self.sell_price) if self.sell_price else None,
+            "buy_type": self.buy_type,
+            "amount": str(self.amount),
+            "timestamp": self.timestamp
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            buy_order_id=data["buy_order_id"],
+            sell_order_id=data["sell_order_id"],
+            buy_price=Decimal(data["buy_price"]) if data["buy_price"] else None,
+            sell_price=Decimal(data["sell_price"]) if data["sell_price"] else None,
+            buy_type=data["buy_type"],
+            amount=Decimal(data["amount"]),
+            timestamp=data["timestamp"]
+        )
 
 
 class Trade(BaseModel):
