@@ -22,7 +22,7 @@ def mock_config() -> BotConfig:
         api_key="test_key",
         api_secret="test_secret",
         pair="BTC/USDT",
-        coin="BTC",
+        coin="test_BTC",
         investment=Decimal("1000"),
         grids=10,
         gridsize=Decimal("1.0"),

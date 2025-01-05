@@ -47,7 +47,7 @@ class TestBotConfig:
         assert mock_config.name == "TestBot"
         assert mock_config.exchange == "binance"
         assert mock_config.pair == "BTC/USDT"
-        assert mock_config.coin == "BTC"
+        assert mock_config.coin == "test_BTC"
         assert mock_config.investment == Decimal("1000")
         assert mock_config.grids == 10
         assert mock_config.gridsize == Decimal("1.0")
@@ -65,7 +65,7 @@ class TestBotConfig:
             api_key="test_key",
             api_secret="test_secret",
             pair="BTC/USDT",
-            coin="BTC",
+            coin="test_BTC",
             investment=Decimal("1000"),
             grids=5,
             gridsize=Decimal("1.0"),
@@ -83,7 +83,7 @@ class TestBotConfig:
             api_key="test_key",
             api_secret="test_secret",
             pair="BTC/USDT",
-            coin="BTC",
+            coin="test_BTC",
             investment=Decimal("1000"),
             grids=10,
             gridsize=Decimal("2.5"),
@@ -102,7 +102,7 @@ class TestBotConfig:
                 api_key="test_key",
                 api_secret="test_secret",
                 pair="BTC/USDT",
-                coin="BTC",
+                coin="test_BTC",
                 investment=Decimal("-1000"),
                 grids=10,
                 gridsize=Decimal("1.0"),
@@ -121,7 +121,7 @@ class TestBotConfig:
                 api_key="test_key",
                 api_secret="test_secret",
                 pair="BTC/USDT",
-                coin="BTC",
+                coin="test_BTC",
                 investment=Decimal("1000"),
                 grids=0,
                 gridsize=Decimal("1.0"),
