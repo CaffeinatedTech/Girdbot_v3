@@ -30,7 +30,7 @@ class GridBot:
         """Load and validate configuration from JSON file."""
         with open(config_path, 'r') as f:
             config_data = json.load(f)
-            config_data.coin = config_data['pair'].split('/')[0]
+            config_data['coin'] = config_data['pair'].split('/')[0]
         return BotConfig(**config_data)
 
     def _setup_signal_handlers(self):
@@ -104,7 +104,7 @@ class GridBot:
                 self.current_price = Decimal(str(ticker['last']))
                 self._update_stats()
                 if self.current_price != self.last_price:
-                    print(f"Current price: {self.current_price}")
+                    # print(f"Current price: {self.current_price}")
                     self.last_price = self.current_price
             except Exception as e:
                 print(f"Ticker watching error: {e}")
@@ -112,11 +112,11 @@ class GridBot:
     async def _monitor_health(self):
         """Periodic health check of orders."""
         while self.running:
+            await asyncio.sleep(60)
             try:
                 await self.strategy.check_order_health()
             except Exception as e:
                 print(f"Health check error: {e}")
-            await asyncio.sleep(60)
 
     def _update_stats(self, trade: Optional[Trade] = None):
         """Update and send statistics to frontend."""

@@ -119,7 +119,7 @@ class ExchangeInterface:
             order = await self.exchange.watch_orders(self.config.pair)
             # print(f"Orders data received: {order}")  # Debug logging
             # print(f"Processing order: {order}")  # Debug logging
-            if order['status'] in ['closed', 'filled']:
+            if order['status'] in ['closed', 'filled'] and order['type'] == 'limit':
                 print(f"Processing filled/closed order: {order}")  # Debug logging
                 return Trade(
                     order_id=order['id'],

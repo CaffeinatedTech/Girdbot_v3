@@ -45,6 +45,7 @@ class OrderPair(BaseModel):
     buy_type: Optional[Literal["limit", "market"]] = None
     amount: Decimal = Field(gt=0)
     timestamp: int = Field(gt=0)
+    buy_order_status: Optional[Literal["open", "closed"]] = None
 
     def to_dict(self):
         return {
