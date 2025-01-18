@@ -228,6 +228,7 @@ class TestGridStrategy:
             buy_price=Decimal("44000"),
             sell_price=Decimal("45450"),
             amount=Decimal("0.1"),
+            buy_order_status="open",
             timestamp=1640995200000
         )
         strategy.order_pairs.append(buy_pair)
@@ -239,6 +240,7 @@ class TestGridStrategy:
             buy_price=Decimal("45000"),
             sell_price=Decimal("46000"),
             amount=Decimal("0.1"),
+            buy_order_status="open",
             timestamp=1640995300000
         )
         strategy.order_pairs.append(sell_pair)

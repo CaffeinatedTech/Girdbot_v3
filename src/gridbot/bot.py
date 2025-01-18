@@ -1,7 +1,6 @@
 import asyncio
 import json
 import signal
-# from pathlib import Path
 from typing import Optional
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -13,7 +12,7 @@ from .websocket import WebSocketManager
 
 
 class GridBot:
-    def __init__(self, config_path: str, fresh_start: bool = False):
+    def __init__(self, config_path: Optional[str] = None, fresh_start: bool = False):
         self.config = self._load_config(config_path)
         self.fresh_start = fresh_start
         self.exchange = ExchangeInterface(self.config)
@@ -26,12 +25,15 @@ class GridBot:
         self._setup_signal_handlers()
 
     @staticmethod
-    def _load_config(config_path: str) -> BotConfig:
-        """Load and validate configuration from JSON file."""
-        with open(config_path, 'r') as f:
-            config_data = json.load(f)
-            config_data['coin'] = config_data['pair'].split('/')[0]
-        return BotConfig(**config_data)
+    def _load_config(config_path: Optional[str] = None) -> BotConfig:
+        """Load and validate configuration from JSON file or from environment variables"""
+        if config_path:
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+                config_data['coin'] = config_data['pair'].split('/')[0]
+            return BotConfig(**config_data)
+        else:
+            return BotConfig.from_env()
 
     def _setup_signal_handlers(self):
         """Setup handlers for graceful shutdown."""
@@ -213,7 +215,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Grid Trading Bot")
-    parser.add_argument('--config', type=str, required=True,
+    parser.add_argument('--config', type=str, required=False,
                         help='Path to configuration file')
     parser.add_argument('--fresh', action='store_true',
                         help='Start fresh by closing current position')

@@ -1,6 +1,7 @@
+import os
 from pydantic import BaseModel, Field
 from typing import Optional, Literal
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 
 class FeeCoinConfig(BaseModel):
@@ -24,6 +25,38 @@ class BotConfig(BaseModel):
     frontend: bool
     frontend_host: str
     fee_coin: Optional[FeeCoinConfig] = None
+
+    @classmethod
+    def from_env(cls):
+        pair = os.getenv("GRIDBOT_PAIR", "BTC/USDT")
+        coin = pair.split("/")[0]
+        # Helper function to safely convert to Decimal
+        def safe_decimal(value, default):
+            try:
+                return Decimal(value) if value is not None else Decimal(default)
+            except InvalidOperation:
+                return Decimal(default)
+
+        return cls(
+            name=os.getenv("GRIDBOT_NAME", "MyGridBot"),
+            exchange=os.getenv("GRIDBOT_EXCHANGE", "binance"),
+            api_key=os.getenv("GRIDBOT_API_KEY", "my_api_key"),
+            api_secret=os.getenv("GRIDBOT_API_SECRET", "my_api_secret"),
+            pair=pair,
+            coin=coin,
+            investment=safe_decimal(os.getenv("GRIDBOT_INVESTMENT"), "1000"),
+            grids=int(os.getenv("GRIDBOT_GRIDS", "10")),
+            gridsize=safe_decimal(os.getenv("GRIDBOT_GRIDSIZE"), "1.0"),
+            sandbox_mode=os.getenv("GRIDBOT_SANDBOX_MODE", "true").lower() == "true",
+            frontend=os.getenv("GRIDBOT_FRONTEND", "true").lower() == "true",
+            frontend_host=os.getenv("GRIDBOT_FRONTEND_HOST", "localhost:8080"),
+            fee_coin=FeeCoinConfig(
+                manage_fee_coin=os.getenv("GRIDBOT_MANAGE_FEE_COIN", "true").lower() == "true",
+                fee_coin=os.getenv("GRIDBOT_FEE_COIN", "BNB"),
+                fee_coin_repurchase_balance_USDT=safe_decimal(os.getenv("GRIDBOT_FEE_COIN_REPURCHASE_BALANCE"), "10"),
+                fee_coin_repurchase_amount_USDT=safe_decimal(os.getenv("GRIDBOT_FEE_COIN_REPURCHASE_AMOUNT"), "20")
+            )
+        )
 
     @property
     def quote_per_trade(self) -> Decimal:

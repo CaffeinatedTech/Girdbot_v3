@@ -311,8 +311,7 @@ class GridStrategy:
         # print(f"Known order ids: {known_order_ids}")
         for order in open_orders:
             if order['id'] not in known_order_ids:
-                print(f"Found live order {order['id']} {order['side']
-                                                        } - price: {order['price']} that we don't have in the array. Adding...")
+                print(f"Found live order {order['id']} {order['side']} - price: {order['price']} that we don't have in the array. Adding...")
                 self.order_pairs.append(OrderPair(
                     buy_order_id=order['id'] if order['side'] == 'buy' else None,
                     buy_price=Decimal(str(order['price'])) if order['side'] == 'buy' else None,
