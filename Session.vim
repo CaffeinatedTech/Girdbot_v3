@@ -13,11 +13,12 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +99 src/gridbot/bot.py
-badd +48 src/gridbot/models.py
-badd +316 src/gridbot/strategy.py
-badd +119 src/gridbot/exchange.py
-badd +4 TODO.md
+badd +3 TODO.md
+badd +105 src/gridbot/exchange.py
+badd +102 src/gridbot/bot.py
+badd +297 src/gridbot/strategy.py
+badd +1 config/sandbox_btc.json
+badd +81 src/gridbot/models.py
 argglobal
 %argdel
 edit TODO.md
@@ -42,7 +43,7 @@ exe 'vert 2resize ' . ((&columns * 104 + 67) / 135)
 argglobal
 enew
 file NvimTree_1
-balt src/gridbot/strategy.py
+balt TODO.md
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -51,10 +52,9 @@ setlocal fdl=0
 setlocal fml=1
 setlocal fdn=20
 setlocal nofen
-lcd ~/projects/gridbot_v3
 wincmd w
 argglobal
-balt ~/projects/gridbot_v3/src/gridbot/strategy.py
+balt src/gridbot/strategy.py
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -65,12 +65,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 4 - ((3 * winheight(0) + 14) / 28)
+let s:l = 3 - ((2 * winheight(0) + 14) / 28)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 4
-normal! 0187|
+keepjumps 3
+normal! 0103|
 lcd ~/projects/gridbot_v3
 wincmd w
 2wincmd w

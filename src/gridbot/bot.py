@@ -87,16 +87,24 @@ class GridBot:
             # Random delay to avoid multiple bots buying simultaneously
             await asyncio.sleep(60 + (hash(self.config.name) % 180))
 
-    async def _watch_trades(self):
-        """Monitor and handle trades."""
+    async def _watch_orders(self):
+        """Monitor and handle completed orders."""
         while self.running:
             try:
-                order = await self.exchange.watch_orders()
-                if order:
+                async for order in self.exchange.watch_orders():
+                    # At this point, we know the order is completed because we filtered in watch_orders
                     await self.strategy.handle_filled_order(order)
                     self._update_stats(order)
             except Exception as e:
-                print(f"Trade watching error: {e}")
+                print(f"Order watching error: {e}")
+                await asyncio.sleep(5)  # Add a delay before retrying
+
+    async def is_our_order(self, order_id):
+        """Check if an order ID belongs to one of our orders."""
+        for pair in self.strategy.order_pairs:
+            if order_id in (pair.buy_order_id, pair.sell_order_id):
+                return await self.exchange.fetch_order(order_id)
+        return None
 
     async def _watch_ticker(self):
         """Monitor and handle ticker updates."""
@@ -174,7 +182,7 @@ class GridBot:
 
             self.tasks = [
                 asyncio.create_task(self._watch_ticker()),
-                asyncio.create_task(self._watch_trades()),
+                asyncio.create_task(self._watch_orders()),
                 asyncio.create_task(self._monitor_health()),
             ]
 

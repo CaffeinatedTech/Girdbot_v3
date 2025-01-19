@@ -1,6 +1,6 @@
 from decimal import Decimal
 import ccxt.pro as ccxtpro
-from typing import Optional, List, Dict, Any
+from typing import AsyncGenerator, Optional, List, Dict, Any
 from .models import BotConfig, Trade
 
 
@@ -89,47 +89,26 @@ class ExchangeInterface:
         """Fetch account balance."""
         return await self.exchange.fetch_balance()
 
-    async def watch_trades(self) -> Trade:
-        """Watch for new trades."""
+    async def watch_orders(self) -> AsyncGenerator[Dict[str, Any], None]:
+        """Watch for completed order updates."""
         while True:
-            trade = await self.exchange.watch_trades(self.config.pair)
-            print(f"Trade data received: {trade}")  # Debug logging
-            if trade:
-                # Check if trade is a list and extract the first element
-                if isinstance(trade, list) and len(trade) > 0:
-                    trade = trade[0]
-
-                # Ensure trade is a dictionary with expected keys
-                if isinstance(trade, dict):
-                    return Trade(
-                        order_id=trade['id'],
-                        side=trade['side'],
-                        symbol=trade.get('symbol', self.config.pair),
-                        price=Decimal(str(trade['price'])),
-                        amount=Decimal(str(trade['amount'])),
-                        cost=Decimal(str(trade['cost'])),
-                        timestamp=trade['timestamp']
+            try:
+                order = await self.exchange.watch_orders(self.config.pair)
+                # print(f"Order update received: {order}")  # Debug logging
+                
+                if order and order['status'] in ['closed', 'filled'] and order['type'] == 'limit':
+                    yield Trade(
+                        order_id=order['id'],
+                        side=order['side'],
+                        symbol=order.get('symbol', self.config.pair),
+                        price=Decimal(str(order['price'])),
+                        amount=Decimal(str(order['amount'])),
+                        cost=Decimal(str(order['cost'])),
+                        timestamp=order['timestamp']
                     )
-                else:
-                    raise ValueError("Unexpected trade format. Expected a dictionary.")
-
-    async def watch_orders(self) -> Optional[Trade]:
-        """Watch for closed orders."""
-        while True:
-            order = await self.exchange.watch_orders(self.config.pair)
-            # print(f"Orders data received: {order}")  # Debug logging
-            # print(f"Processing order: {order}")  # Debug logging
-            if order['status'] in ['closed', 'filled'] and order['type'] == 'limit':
-                print(f"Processing filled/closed order: {order}")  # Debug logging
-                return Trade(
-                    order_id=order['id'],
-                    side=order['side'],
-                    symbol=order.get('symbol', self.config.pair),
-                    price=Decimal(str(order['price'])),
-                    amount=Decimal(str(order['amount'])),
-                    cost=Decimal(str(order['cost'])),
-                    timestamp=order['timestamp']
-                )
+            except Exception as e:
+                print(f"Error in watch_orders: {e}")
+                await asyncio.sleep(5)
 
     async def close(self):
         """Close exchange connection."""

@@ -195,7 +195,7 @@ class GridStrategy:
                 })
 
             if trade.side == "buy":
-                print(f"Filled BUY order at price {trade.price}")
+                print(f"Filled BUY order {trade.order_id} at price {trade.price}")
                 # Find or create order pair for this buy
                 pair = None
                 for p in self.order_pairs:
@@ -215,7 +215,7 @@ class GridStrategy:
                 # Create sell order at next grid level up
                 sell_price = trade.price + self.grid_size
                 sell_order = await self.exchange.create_limit_sell_order(trade.amount, sell_price)
-                print(f"Created sell order at price {sell_price}")
+                print(f"Created sell order {sell_order['id']} at price {sell_price}")
 
                 # Update pair with sell order details
                 pair.sell_order_id = sell_order['id']
@@ -223,7 +223,7 @@ class GridStrategy:
                 pair.buy_order_status = "closed"
 
             else:  # sell order
-                print(f"Filled SELL order at price {trade.price}")
+                print(f"Filled SELL order {trade.order_id} at price {trade.price}")
                 # Find the completed pair
                 completed_pair = None
                 for pair in self.order_pairs:
@@ -237,7 +237,7 @@ class GridStrategy:
                     # Create new buy order at the original buy price
                     buy_price = completed_pair.buy_price
                     buy_order = await self.exchange.create_limit_buy_order(completed_pair.amount, buy_price)
-                    print(f"Created buy order at price {buy_price}")
+                    print(f"Created buy order {buy_order['id']} at price {buy_price}")
 
                     # Create new pair for the buy order
                     new_pair = OrderPair(
@@ -280,61 +280,101 @@ class GridStrategy:
 
     async def check_order_health(self):
         """Check and repair grid orders."""
-        # print("Checking order health...")
+        print("Checking order health...")
         open_orders = await self.exchange.fetch_open_orders()
         open_order_ids = {order['id'] for order in open_orders}
-        orders_updated = False
-        # print(f"Open orders: {open_order_ids}")
 
-        for pair in self.order_pairs:
-            # print(f"Checking pair: {pair}")
+        # Print order IDs and sides
+        for order in open_orders:
+            print(f"Open {order['side']} order {order['id']} at price {order['price']}")
+
+        # Print saved order IDS and sides for limit orders only.  Remember that both buy and sell orders are in the same object
+        # for pair in self.order_pairs:
+        #     if pair.buy_type == "limit":
+        #         if pair.buy_order_status == "open":
+        #             print(f"Saved buy order {pair.buy_order_id} at price {pair.buy_price}")
+        #     if pair.buy_order_status == "open":
+        #         print(f"Saved sell order {pair.sell_order_id} at price {pair.sell_price}")
+
+        # Fetch current market price
+        ticker = await self.exchange.fetch_ticker()
+        current_price = Decimal(str(ticker['last']))
+        print(f"Current market price: {current_price}")
+
+        orders_updated = False
+
+        for pair in self.order_pairs[:]:  # Create a copy of the list to iterate over
             # Check buy order
             if pair.buy_order_status == "open" and pair.buy_order_id and pair.buy_order_id not in open_order_ids and pair.buy_type == "limit":
-                print(f"Buy order {pair.buy_order_id} not found. Recreating...")
-                # Recreate missing buy order
-                buy_order = await self.exchange.create_limit_buy_order(pair.amount, pair.buy_price)
-                pair.buy_order_id = buy_order['id']
-                orders_updated = True
+                print(f"Buy order {pair.buy_order_id} not found in open orders. Checking status...")
+                try:
+                    order_status = await self.exchange.fetch_order(pair.buy_order_id)
+                    if order_status['status'] == 'closed':
+                        print(f"Buy order {pair.buy_order_id} was filled. Updating state and creating sell order...")
+                        pair.buy_order_status = "closed"
+                        # Create corresponding sell order at current price + grid_size
+                        sell_price = max(current_price + self.grid_size, pair.buy_price + self.grid_size)
+                        sell_order = await self.exchange.create_limit_sell_order(pair.amount, sell_price)
+                        pair.sell_order_id = sell_order['id']
+                        pair.sell_price = Decimal(str(sell_order['price']))
+                        orders_updated = True
+                    elif order_status['status'] == 'canceled':
+                        print(f"Buy order {pair.buy_order_id} was cancelled. Recreating...")
+                        # Recreate buy order at current price or original price, whichever is lower
+                        new_buy_price = min(current_price, pair.buy_price)
+                        buy_order = await self.exchange.create_limit_buy_order(pair.amount, new_buy_price)
+                        pair.buy_order_id = buy_order['id']
+                        pair.buy_price = Decimal(str(buy_order['price']))
+                        orders_updated = True
+                except Exception as e:
+                    print(f"Error checking buy order {pair.buy_order_id} status: {e}")
 
-            # Check sell order (only if it's a sell-only order)
+            # Check sell order
             if pair.sell_order_id and pair.sell_order_id not in open_order_ids:
-                print(f"Sell order {pair.sell_order_id} not found. Recreating...")
-                # Recreate missing sell order with original price
-                sell_order = await self.exchange.create_limit_sell_order(pair.amount, pair.sell_price)
-                pair.sell_order_id = sell_order['id']
-                print(f"Recreated sell order {pair.sell_order_id} at price {pair.sell_price}")
-                orders_updated = True
+                print(f"Sell order {pair.sell_order_id} not found in open orders. Checking status...")
+                try:
+                    order_status = await self.exchange.fetch_order(pair.sell_order_id)
+                    if order_status['status'] == 'closed':
+                        print(f"Sell order {pair.sell_order_id} was filled. Updating state and creating buy order...")
+                        # Move this completed pair to completed_trades
+                        self.completed_trades.append(pair)
+                        self.order_pairs.remove(pair)
+                        # Create a new buy order to replace the completed pair
+                        buy_price = min(current_price - self.grid_size, pair.sell_price - self.grid_size)
+                        buy_order = await self.exchange.create_limit_buy_order(pair.amount, buy_price)
+                        new_pair = OrderPair(
+                            buy_order_id=buy_order['id'],
+                            buy_price=Decimal(str(buy_order['price'])),
+                            amount=pair.amount,
+                            buy_order_status="open",
+                            timestamp=int(time.time() * 1000)
+                        )
+                        self.order_pairs.append(new_pair)
+                        orders_updated = True
+                    elif order_status['status'] == 'canceled':
+                        print(f"Sell order {pair.sell_order_id} was cancelled. Recreating...")
+                        # Recreate sell order at current price or original price, whichever is higher
+                        new_sell_price = max(current_price, pair.sell_price)
+                        sell_order = await self.exchange.create_limit_sell_order(pair.amount, new_sell_price)
+                        pair.sell_order_id = sell_order['id']
+                        pair.sell_price = Decimal(str(sell_order['price']))
+                        orders_updated = True
+                except Exception as e:
+                    print(f"Error checking sell order {pair.sell_order_id} status: {e}")
 
-        # Check for live orders that we don't have in the array
-        known_order_ids = {pair.buy_order_id for pair in self.order_pairs}
-        known_order_ids.update({pair.sell_order_id for pair in self.order_pairs})
-        # print(f"Known order ids: {known_order_ids}")
-        for order in open_orders:
-            if order['id'] not in known_order_ids:
-                print(f"Found live order {order['id']} {order['side']} - price: {order['price']} that we don't have in the array. Adding...")
-                self.order_pairs.append(OrderPair(
-                    buy_order_id=order['id'] if order['side'] == 'buy' else None,
-                    buy_price=Decimal(str(order['price'])) if order['side'] == 'buy' else None,
-                    sell_order_id=order['id'] if order['side'] == 'sell' else None,
-                    sell_price=Decimal(str(order['price'])) if order['side'] == 'sell' else None,
-                    amount=Decimal(str(order['amount'])),
-                    timestamp=order['timestamp']
-                ))
-                orders_updated = True
+        # Ensure we don't have more order pairs than grids
+        while len(self.order_pairs) > self.config.grids:
+            excess_pair = self.order_pairs.pop()
+            print(f"Removing excess order pair: {excess_pair}")
+            if excess_pair.buy_order_id:
+                await self.exchange.cancel_order(excess_pair.buy_order_id)
+            if excess_pair.sell_order_id:
+                await self.exchange.cancel_order(excess_pair.sell_order_id)
 
         if orders_updated:
             await self._save_order_pairs()
 
-        # Send updated grid status
-        if self.websocket:
-            await self.websocket.send_update({
-                'type': 'grid_status',
-                'data': {
-                    'total_pairs': len(self.order_pairs),
-                    'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
-                    'completed_trades': len(self.completed_trades)
-                }
-            })
+        print(f"Order health check complete. Current order pairs: {len(self.order_pairs)}")
 
     async def _save_order_pairs(self):
         """Save order pairs to file."""
