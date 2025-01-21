@@ -91,20 +91,28 @@ class GridBot:
         """Monitor and handle completed orders."""
         while self.running:
             try:
-                async for order in self.exchange.watch_orders():
-                    # At this point, we know the order is completed because we filtered in watch_orders
-                    await self.strategy.handle_filled_order(order)
-                    self._update_stats(order)
+                orders = await self.exchange.watch_orders()
+                if orders is None or len(orders) == 0:
+                    print("No orders returned")
+                    await asyncio.sleep(0.01)
+                    continue
+                for order in orders:
+                    # Check if the order is limit, and closed
+                    print(f"Order {order['id']} status: {order['status']}, filled: {order['filled']}")
+                    if order['status'] == 'closed' and order['type'] == 'limit':
+                        await self.strategy.handle_filled_order(Trade({
+                            'order_id': order['id'],
+                            'side': order['side'],
+                            'symbol': self.config.pair,
+                            'price': Decimal(str(order['price'])),
+                            'amount': Decimal(str(order['amount'])),
+                            'cost': Decimal(str(order['cost'])),
+                            'timestamp': datetime.now().timestamp()
+                        }))
+                        self._update_stats(order)
             except Exception as e:
                 print(f"Order watching error: {e}")
                 await asyncio.sleep(5)  # Add a delay before retrying
-
-    async def is_our_order(self, order_id):
-        """Check if an order ID belongs to one of our orders."""
-        for pair in self.strategy.order_pairs:
-            if order_id in (pair.buy_order_id, pair.sell_order_id):
-                return await self.exchange.fetch_order(order_id)
-        return None
 
     async def _watch_ticker(self):
         """Monitor and handle ticker updates."""

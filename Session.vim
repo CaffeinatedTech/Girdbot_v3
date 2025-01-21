@@ -13,48 +13,16 @@ if &shortmess =~ 'A'
 else
   set shortmess=aoO
 endif
-badd +3 TODO.md
-badd +105 src/gridbot/exchange.py
-badd +102 src/gridbot/bot.py
-badd +297 src/gridbot/strategy.py
-badd +1 config/sandbox_btc.json
-badd +81 src/gridbot/models.py
+badd +4 TODO.md
+badd +98 src/gridbot/exchange.py
+badd +112 src/gridbot/bot.py
+badd +220 src/gridbot/strategy.py
+badd +115 src/gridbot/models.py
 argglobal
 %argdel
 edit TODO.md
-let s:save_splitbelow = &splitbelow
-let s:save_splitright = &splitright
-set splitbelow splitright
-wincmd _ | wincmd |
-vsplit
-1wincmd h
-wincmd w
-let &splitbelow = s:save_splitbelow
-let &splitright = s:save_splitright
-wincmd t
-let s:save_winminheight = &winminheight
-let s:save_winminwidth = &winminwidth
-set winminheight=0
-set winheight=1
-set winminwidth=0
-set winwidth=1
-exe 'vert 1resize ' . ((&columns * 30 + 67) / 135)
-exe 'vert 2resize ' . ((&columns * 104 + 67) / 135)
 argglobal
-enew
-file NvimTree_1
-balt TODO.md
-setlocal fdm=manual
-setlocal fde=0
-setlocal fmr={{{,}}}
-setlocal fdi=#
-setlocal fdl=0
-setlocal fml=1
-setlocal fdn=20
-setlocal nofen
-wincmd w
-argglobal
-balt src/gridbot/strategy.py
+balt src/gridbot/exchange.py
 setlocal fdm=manual
 setlocal fde=0
 setlocal fmr={{{,}}}
@@ -65,17 +33,13 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 3 - ((2 * winheight(0) + 14) / 28)
+let s:l = 4 - ((3 * winheight(0) + 14) / 28)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 3
-normal! 0103|
+keepjumps 4
+normal! 061|
 lcd ~/projects/gridbot_v3
-wincmd w
-2wincmd w
-exe 'vert 1resize ' . ((&columns * 30 + 67) / 135)
-exe 'vert 2resize ' . ((&columns * 104 + 67) / 135)
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'
   silent exe 'bwipe ' . s:wipebuf
@@ -83,8 +47,6 @@ endif
 unlet! s:wipebuf
 set winheight=1 winwidth=20
 let &shortmess = s:shortmess_save
-let &winminheight = s:save_winminheight
-let &winminwidth = s:save_winminwidth
 let s:sx = expand("<sfile>:p:r")."x.vim"
 if filereadable(s:sx)
   exe "source " . fnameescape(s:sx)

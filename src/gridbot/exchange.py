@@ -1,6 +1,6 @@
 from decimal import Decimal
 import ccxt.pro as ccxtpro
-from typing import AsyncGenerator, Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any
 from .models import BotConfig, Trade
 
 
@@ -18,18 +18,20 @@ class ExchangeInterface:
         exchange = exchange_class({
             'apiKey': self.config.api_key,
             'secret': self.config.api_secret,
-            'enableRateLimit': True,
             'options': {'defaultType': 'spot'}
         })
+        exchange.options['ws']['useMessageQueue'] = True
 
         if self.config.sandbox_mode:
             exchange.set_sandbox_mode(True)
+
+        exchange.new_updates = True
 
         return exchange
 
     async def initialize(self):
         """Load markets and other initialization tasks."""
-        self.markets = await self.exchange.load_markets()
+        self.markets = await self.exchange.fetch_markets()
 
     async def fetch_ticker(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Fetch current ticker information."""
@@ -89,26 +91,15 @@ class ExchangeInterface:
         """Fetch account balance."""
         return await self.exchange.fetch_balance()
 
-    async def watch_orders(self) -> AsyncGenerator[Dict[str, Any], None]:
+    async def watch_orders(self) -> List[Dict[str, Any]]:
         """Watch for completed order updates."""
-        while True:
-            try:
-                order = await self.exchange.watch_orders(self.config.pair)
-                # print(f"Order update received: {order}")  # Debug logging
-                
-                if order and order['status'] in ['closed', 'filled'] and order['type'] == 'limit':
-                    yield Trade(
-                        order_id=order['id'],
-                        side=order['side'],
-                        symbol=order.get('symbol', self.config.pair),
-                        price=Decimal(str(order['price'])),
-                        amount=Decimal(str(order['amount'])),
-                        cost=Decimal(str(order['cost'])),
-                        timestamp=order['timestamp']
-                    )
-            except Exception as e:
-                print(f"Error in watch_orders: {e}")
-                await asyncio.sleep(5)
+        try:
+            orders = await self.exchange.watch_orders(self.config.pair)
+            return orders
+
+        except Exception as e:
+            print(f"Error in watch_orders: {e}")
+            return []
 
     async def close(self):
         """Close exchange connection."""

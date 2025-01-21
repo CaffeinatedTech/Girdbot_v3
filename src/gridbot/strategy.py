@@ -140,21 +140,25 @@ class GridStrategy:
         for pair in self.order_pairs:
             if pair.sell_order_id != order_id and pair.sell_order_id is not None:
                 return False
-        print("Last sell order")
+        # print("Last sell order")
         return True
 
     async def _trail_up(self):
-        # Trail up the grid.  Cancel the bottom buy order, buy in again and create a new sell order
-        # Find the buy order with the lowest price
-        print("Trailing up the grid...")
+        # print("Trailing up the grid...")
         # Fetch current market price
         ticker = await self.exchange.fetch_ticker()
         current_price = Decimal(str(ticker['last']))
         lowest_buy_order = None
-        for pair in self.order_pairs:
+        lowest_buy_index = -1
+        for index, pair in enumerate(self.order_pairs):
             if pair.buy_order_id is not None \
                     and (lowest_buy_order is None or pair.buy_price < lowest_buy_order.buy_price):
                 lowest_buy_order = pair
+                lowest_buy_index = index
+
+        if lowest_buy_order is None:
+            print("No buy orders found to trail up.")
+            return
 
         # Cancel the buy order
         await self.exchange.cancel_order(lowest_buy_order.buy_order_id)
@@ -166,13 +170,24 @@ class GridStrategy:
         sell_price = current_price + self.grid_size
         sell_order = await self.exchange.create_limit_sell_order(buy_amount, sell_price)
 
-        # Update the order pair
-        lowest_buy_order.buy_order_id = buy_order['id']
-        lowest_buy_order.buy_price = Decimal(str(buy_order['price']))
-        lowest_buy_order.sell_order_id = sell_order['id']
-        lowest_buy_order.sell_price = Decimal(str(sell_order['price']))
+        # Create a new OrderPair object
+        new_pair = OrderPair(
+            buy_order_id=buy_order['id'],
+            buy_price=Decimal(str(buy_order['price'])),
+            sell_order_id=sell_order['id'],
+            sell_price=Decimal(str(sell_order['price'])),
+            amount=buy_amount,
+            timestamp=int(time.time() * 1000),
+            buy_order_status="closed"
+        )
+
+        # Replace the old pair with the new pair in the list
+        self.order_pairs[lowest_buy_index] = new_pair
 
         await self._save_order_pairs()
+
+        print(f"Trailed up: Cancelled order {lowest_buy_order.buy_order_id}, "
+              f"new sell order {sell_order['id']}")
 
     async def handle_filled_order(self, trade: Trade):
         """Handle a filled order and maintain the grid."""
@@ -280,13 +295,14 @@ class GridStrategy:
 
     async def check_order_health(self):
         """Check and repair grid orders."""
-        print("Checking order health...")
+        # print("Checking order health...")
         open_orders = await self.exchange.fetch_open_orders()
         open_order_ids = {order['id'] for order in open_orders}
+        new_order_ids = []
 
         # Print order IDs and sides
-        for order in open_orders:
-            print(f"Open {order['side']} order {order['id']} at price {order['price']}")
+        # for order in open_orders:
+        #     print(f"Open {order['side']} order {order['id']} at price {order['price']}")
 
         # Print saved order IDS and sides for limit orders only.  Remember that both buy and sell orders are in the same object
         # for pair in self.order_pairs:
@@ -299,18 +315,19 @@ class GridStrategy:
         # Fetch current market price
         ticker = await self.exchange.fetch_ticker()
         current_price = Decimal(str(ticker['last']))
-        print(f"Current market price: {current_price}")
+        # print(f"Current market price: {current_price}")
 
         orders_updated = False
 
         for pair in self.order_pairs[:]:  # Create a copy of the list to iterate over
+            if pair.buy_order_id in new_order_ids:
+                continue
             # Check buy order
             if pair.buy_order_status == "open" and pair.buy_order_id and pair.buy_order_id not in open_order_ids and pair.buy_type == "limit":
                 print(f"Buy order {pair.buy_order_id} not found in open orders. Checking status...")
                 try:
                     order_status = await self.exchange.fetch_order(pair.buy_order_id)
                     if order_status['status'] == 'closed':
-                        print(f"Buy order {pair.buy_order_id} was filled. Updating state and creating sell order...")
                         pair.buy_order_status = "closed"
                         # Create corresponding sell order at current price + grid_size
                         sell_price = max(current_price + self.grid_size, pair.buy_price + self.grid_size)
@@ -318,6 +335,9 @@ class GridStrategy:
                         pair.sell_order_id = sell_order['id']
                         pair.sell_price = Decimal(str(sell_order['price']))
                         orders_updated = True
+                        new_order_ids.append(pair.sell_order_id)
+                        print(
+                            f"Buy order {pair.buy_order_id} was filled. Updated state and created sell order {pair.sell_order_id}...")
                     elif order_status['status'] == 'canceled':
                         print(f"Buy order {pair.buy_order_id} was cancelled. Recreating...")
                         # Recreate buy order at current price or original price, whichever is lower
@@ -326,8 +346,12 @@ class GridStrategy:
                         pair.buy_order_id = buy_order['id']
                         pair.buy_price = Decimal(str(buy_order['price']))
                         orders_updated = True
+                        new_order_ids.append(pair.buy_order_id)
                 except Exception as e:
                     print(f"Error checking buy order {pair.buy_order_id} status: {e}")
+
+            if pair.sell_order_id in new_order_ids:
+                continue
 
             # Check sell order
             if pair.sell_order_id and pair.sell_order_id not in open_order_ids:
@@ -335,7 +359,6 @@ class GridStrategy:
                 try:
                     order_status = await self.exchange.fetch_order(pair.sell_order_id)
                     if order_status['status'] == 'closed':
-                        print(f"Sell order {pair.sell_order_id} was filled. Updating state and creating buy order...")
                         # Move this completed pair to completed_trades
                         self.completed_trades.append(pair)
                         self.order_pairs.remove(pair)
@@ -351,6 +374,9 @@ class GridStrategy:
                         )
                         self.order_pairs.append(new_pair)
                         orders_updated = True
+                        new_order_ids.append(pair.buy_order_id)
+                        print(
+                            f"Sell order {pair.sell_order_id} was filled. Updated state and created buy order {pair.buy_order_id}...")
                     elif order_status['status'] == 'canceled':
                         print(f"Sell order {pair.sell_order_id} was cancelled. Recreating...")
                         # Recreate sell order at current price or original price, whichever is higher
@@ -359,6 +385,7 @@ class GridStrategy:
                         pair.sell_order_id = sell_order['id']
                         pair.sell_price = Decimal(str(sell_order['price']))
                         orders_updated = True
+                        new_order_ids.append(pair.sell_order_id)
                 except Exception as e:
                     print(f"Error checking sell order {pair.sell_order_id} status: {e}")
 
@@ -374,11 +401,11 @@ class GridStrategy:
         if orders_updated:
             await self._save_order_pairs()
 
-        print(f"Order health check complete. Current order pairs: {len(self.order_pairs)}")
+        # print(f"Order health check complete. Current order pairs: {len(self.order_pairs)}")
 
     async def _save_order_pairs(self):
         """Save order pairs to file."""
-        print(f"Saving order pairs to file... {len(self.order_pairs)}")
+        # print(f"Saving order pairs to file... {len(self.order_pairs)}")
         with open(f'order_pairs_{self.config.coin}.json', 'w') as f:
             json.dump([pair.to_dict() for pair in self.order_pairs], f)
 
