@@ -31,6 +31,7 @@ class BotConfig(BaseModel):
         pair = os.getenv("GRIDBOT_PAIR", "BTC/USDT")
         coin = pair.split("/")[0]
         # Helper function to safely convert to Decimal
+
         def safe_decimal(value, default):
             try:
                 return Decimal(value) if value is not None else Decimal(default)

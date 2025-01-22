@@ -15,12 +15,15 @@ else
 endif
 badd +4 TODO.md
 badd +98 src/gridbot/exchange.py
-badd +112 src/gridbot/bot.py
-badd +220 src/gridbot/strategy.py
-badd +115 src/gridbot/models.py
+badd +113 src/gridbot/bot.py
+badd +62 src/gridbot/strategy.py
+badd +116 src/gridbot/models.py
+badd +69 src/gridbot/websocket.py
+badd +1 completed_trades_BTC.json
+badd +142 tests/unit/gridbot/test_strategy.py
 argglobal
 %argdel
-edit TODO.md
+edit src/gridbot/bot.py
 argglobal
 balt src/gridbot/exchange.py
 setlocal fdm=manual
@@ -33,12 +36,12 @@ setlocal fdn=20
 setlocal fen
 silent! normal! zE
 let &fdl = &fdl
-let s:l = 4 - ((3 * winheight(0) + 14) / 28)
+let s:l = 113 - ((22 * winheight(0) + 14) / 28)
 if s:l < 1 | let s:l = 1 | endif
 keepjumps exe s:l
 normal! zt
-keepjumps 4
-normal! 061|
+keepjumps 113
+normal! 043|
 lcd ~/projects/gridbot_v3
 tabnext 1
 if exists('s:wipebuf') && len(win_findbuf(s:wipebuf)) == 0 && getbufvar(s:wipebuf, '&buftype') isnot# 'terminal'

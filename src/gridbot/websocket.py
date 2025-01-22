@@ -21,7 +21,7 @@ class WebSocketManager:
             return
 
         try:
-            self.ws = await websockets.connect(f"wss://{self.config.frontend_host}")
+            self.ws = await websockets.connect(f"ws://{self.config.frontend_host}")
             self.connected = True
             print("WebSocket connected")
         except Exception as e:

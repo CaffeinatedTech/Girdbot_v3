@@ -100,16 +100,17 @@ class GridBot:
                     # Check if the order is limit, and closed
                     print(f"Order {order['id']} status: {order['status']}, filled: {order['filled']}")
                     if order['status'] == 'closed' and order['type'] == 'limit':
-                        await self.strategy.handle_filled_order(Trade({
-                            'order_id': order['id'],
-                            'side': order['side'],
-                            'symbol': self.config.pair,
-                            'price': Decimal(str(order['price'])),
-                            'amount': Decimal(str(order['amount'])),
-                            'cost': Decimal(str(order['cost'])),
-                            'timestamp': datetime.now().timestamp()
-                        }))
-                        self._update_stats(order)
+                        this_trade = Trade(
+                            order_id=order['id'],
+                            side=order['side'],
+                            symbol=self.config.pair,
+                            price=Decimal(str(order['price'])),
+                            amount=Decimal(str(order['amount'])),
+                            cost=Decimal(str(order['cost'])),
+                            timestamp=int(order['timestamp'])
+                        )
+                        await self.strategy.handle_filled_order(this_trade)
+                        self._update_stats()
             except Exception as e:
                 print(f"Order watching error: {e}")
                 await asyncio.sleep(5)  # Add a delay before retrying
@@ -120,10 +121,11 @@ class GridBot:
             try:
                 ticker = await self.exchange.watch_ticker()
                 self.current_price = Decimal(str(ticker['last']))
-                self._update_stats()
                 if self.current_price != self.last_price:
                     # print(f"Current price: {self.current_price}")
                     self.last_price = self.current_price
+                    self.ws_manager.add_price(self.current_price)
+                    self._update_stats()
             except Exception as e:
                 print(f"Ticker watching error: {e}")
 
@@ -158,13 +160,8 @@ class GridBot:
         """Calculate total profit from completed trades."""
         total_profit = Decimal('0')
         for trade in self.strategy.completed_trades:
-            if trade.side == 'sell':
-                # Find matching buy order
-                for pair in self.strategy.order_pairs:
-                    if pair.sell_order_id == trade.order_id:
-                        profit = (trade.price - pair.buy_price) * trade.amount
-                        total_profit += profit
-                        break
+            profit = (trade.sell_price - trade.buy_price) * trade.amount
+            total_profit += profit
         return float(total_profit)
 
     def _calculate_period_profit(self, hours: int) -> float:
@@ -174,12 +171,8 @@ class GridBot:
 
         for trade in self.strategy.completed_trades:
             if trade.timestamp >= period_start.timestamp() * 1000:
-                if trade.side == 'sell':
-                    for pair in self.strategy.order_pairs:
-                        if pair.sell_order_id == trade.order_id:
-                            profit = (trade.price - pair.buy_price) * trade.amount
-                            period_profit += profit
-                            break
+                profit = (trade.sell_price - trade.buy_price) * trade.amount
+                period_profit += profit
 
         return float(period_profit)
 

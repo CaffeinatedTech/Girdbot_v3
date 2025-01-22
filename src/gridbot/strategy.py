@@ -31,6 +31,7 @@ class GridStrategy:
         """Initialize the grid with orders."""
         try:
             await self._load_order_pairs()
+            await self._load_completed_trades()
             print("Initializing grid...")
             if fresh_start:
                 print("Fresh start: Cancelling existing orders and positions...")
@@ -113,6 +114,7 @@ class GridStrategy:
 
                 time.sleep(1)
                 await self._save_order_pairs()
+                await self._save_completed_trades()
 
             # Send initial grid status
             if self.websocket:
@@ -192,22 +194,17 @@ class GridStrategy:
     async def handle_filled_order(self, trade: Trade):
         """Handle a filled order and maintain the grid."""
         try:
-            # Check order status before processing
-            # if trade.status not in ['closed', 'filled']:
-            #     print(f"Ignoring order {trade.order_id} with status {trade.status}")
-            #     return
-
             # Send trade update to websocket first
-            if self.websocket:
-                await self.websocket.send_update({
-                    'type': 'trade',
-                    'data': {
-                        'side': trade.side,
-                        'amount': str(trade.amount),
-                        'price': str(trade.price),
-                        'timestamp': trade.timestamp
-                    }
-                })
+            # if self.websocket:
+            #     await self.websocket.send_update({
+            #         'type': 'trade',
+            #         'data': {
+            #             'side': trade.side,
+            #             'amount': str(trade.amount),
+            #             'price': str(trade.price),
+            #             'timestamp': trade.timestamp
+            #         }
+            #     })
 
             if trade.side == "buy":
                 print(f"Filled BUY order {trade.order_id} at price {trade.price}")
@@ -244,8 +241,11 @@ class GridStrategy:
                 for pair in self.order_pairs:
                     if pair.sell_order_id == trade.order_id:
                         completed_pair = pair
-                        self.order_pairs.remove(pair)
+                        pair.timestamp = trade.timestamp
+                        pair.sell_price = trade.price
                         self.completed_trades.append(pair)
+                        self.order_pairs.remove(pair)
+                        # await self._save_completed_trades()
                         break
 
                 if completed_pair:
@@ -272,25 +272,25 @@ class GridStrategy:
             await self._save_order_pairs()
 
             # Send grid status update to websocket
-            if self.websocket:
-                await self.websocket.send_update({
-                    'type': 'grid_status',
-                    'data': {
-                        'total_pairs': len(self.order_pairs),
-                        'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
-                        'completed_trades': len(self.completed_trades)
-                    }
-                })
+            # if self.websocket:
+            #     await self.websocket.send_update({
+            #         'type': 'grid_status',
+            #         'data': {
+            #             'total_pairs': len(self.order_pairs),
+            #             'active_pairs': len([p for p in self.order_pairs if p.sell_order_id is not None]),
+            #             'completed_trades': len(self.completed_trades)
+            #         }
+            #     })
         except Exception as e:
             print(f"Error handling filled order: {e}")
-            if self.websocket:
-                await self.websocket.send_update({
-                    'type': 'error',
-                    'data': {
-                        'message': str(e),
-                        'timestamp': int(time.time() * 1000)
-                    }
-                })
+            # if self.websocket:
+            #     await self.websocket.send_update({
+            #         'type': 'error',
+            #         'data': {
+            #             'message': str(e),
+            #             'timestamp': int(time.time() * 1000)
+            #         }
+            #     })
             raise
 
     async def check_order_health(self):
@@ -338,15 +338,15 @@ class GridStrategy:
                         new_order_ids.append(pair.sell_order_id)
                         print(
                             f"Buy order {pair.buy_order_id} was filled. Updated state and created sell order {pair.sell_order_id}...")
-                    elif order_status['status'] == 'canceled':
-                        print(f"Buy order {pair.buy_order_id} was cancelled. Recreating...")
-                        # Recreate buy order at current price or original price, whichever is lower
-                        new_buy_price = min(current_price, pair.buy_price)
-                        buy_order = await self.exchange.create_limit_buy_order(pair.amount, new_buy_price)
-                        pair.buy_order_id = buy_order['id']
-                        pair.buy_price = Decimal(str(buy_order['price']))
-                        orders_updated = True
-                        new_order_ids.append(pair.buy_order_id)
+                    # elif order_status['status'] == 'canceled':
+                    #     print(f"Buy order {pair.buy_order_id} was cancelled. Recreating...")
+                    #     # Recreate buy order at current price or original price, whichever is lower
+                    #     new_buy_price = min(current_price, pair.buy_price)
+                    #     buy_order = await self.exchange.create_limit_buy_order(pair.amount, new_buy_price)
+                    #     pair.buy_order_id = buy_order['id']
+                    #     pair.buy_price = Decimal(str(buy_order['price']))
+                    #     orders_updated = True
+                    #     new_order_ids.append(pair.buy_order_id)
                 except Exception as e:
                     print(f"Error checking buy order {pair.buy_order_id} status: {e}")
 
@@ -362,6 +362,7 @@ class GridStrategy:
                         # Move this completed pair to completed_trades
                         self.completed_trades.append(pair)
                         self.order_pairs.remove(pair)
+                        await self._save_completed_trades()
                         # Create a new buy order to replace the completed pair
                         buy_price = min(current_price - self.grid_size, pair.sell_price - self.grid_size)
                         buy_order = await self.exchange.create_limit_buy_order(pair.amount, buy_price)
@@ -377,6 +378,11 @@ class GridStrategy:
                         new_order_ids.append(pair.buy_order_id)
                         print(
                             f"Sell order {pair.sell_order_id} was filled. Updated state and created buy order {pair.buy_order_id}...")
+                        # Check if this was the last sell order
+                        if self._last_sell_order(order_status['id']):
+                            # Trail up the grid
+                            await self._trail_up()
+
                     elif order_status['status'] == 'canceled':
                         print(f"Sell order {pair.sell_order_id} was cancelled. Recreating...")
                         # Recreate sell order at current price or original price, whichever is higher
@@ -418,4 +424,20 @@ class GridStrategy:
         except FileNotFoundError:
             print("Order pairs file not found. Starting with an empty list.")
             self.order_pairs = []
+
+    async def _save_completed_trades(self):
+        """Save completed trades to file."""
+        # print(f"Saving completed trades to file... {len(self.completed_trades)}")
+        with open(f'completed_trades_{self.config.coin}.json', 'w') as f:
+            json.dump([trade.to_dict() for trade in self.completed_trades], f)
+
+    async def _load_completed_trades(self):
+        """Load completed trades from file."""
+        try:
+            with open(f'completed_trades_{self.config.coin}.json', 'r') as f:
+                trades_data = json.load(f)
+                self.completed_trades = [OrderPair.from_dict(data) for data in trades_data]
+        except FileNotFoundError:
+            print("Completed trades file not found. Starting with an empty list.")
+            self.completed_trades = []
 
